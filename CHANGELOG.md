@@ -10,6 +10,11 @@ patched by CI at tag time and are never committed with a real version number.
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-09-05
+
+First tagged release. The pipeline works end to end and both platform profiles have been
+through a real YouTube round trip.
+
 ### Added
 
 - Initial project skeleton: Go module, changelog guard hook and workflow, BZ-1.1 licence.
@@ -82,52 +87,6 @@ patched by CI at tag time and are never committed with a real version number.
 - CI installs FFmpeg on Linux and Windows and sets `NOISECRYPT_REQUIRE_FFMPEG`, so a
   broken install fails the job instead of silently skipping every video test.
 
-### Measured
-
-- **Real platform round trip, 2026-09-05.** A 45 second Short carrying 160 KiB of
-  incompressible payload was uploaded to YouTube unlisted, and every rendition YouTube
-  produced was downloaded and decoded. All nine recovered the payload byte for byte:
-  1080x1920 in H.264, VP9 and AV1, then 720x1280, 608x1080, 480x854, 360x640, 240x426
-  and 144x256. The `social` profile is now marked `Verified`.
-  - YouTube cost nothing: the three unreadable frames out of 1344 are the same three
-    that failed locally before the upload, so they come from this codec's registration
-    rather than from the platform.
-  - The profile is heavily overbuilt. Designed for a scaling factor of 8/15, it
-    survived 1/7.5, with cells reduced to four pixels and AV1 at a twentieth of the
-    source bitrate. A much denser social profile is possible, on measurement.
-
-- Soft demodulation, on the social geometry at a 1.75 percent raw byte error rate:
-  30 of 32 frames repaired using confidence, 3 without it.
-- Error envelope of the social geometry: 25 percent intra parity carries 123 payload
-  bytes per frame at 114 percent overhead and survives up to 2.8 percent raw byte
-  errors; 50 percent carries 81 bytes at 225 percent overhead and survives up to 4.3
-  percent. Both figures come from a test that will fail if they regress.
-- Real H.264, measured by `simulate` on this machine: the `social` profile decoded at
-  every quality tested down to CRF 42; `archive` decoded at CRF 18 and 23 and failed
-  at 28. Local re-encodes only, so a lower bound on what a platform does.
-- Confidence ranks corruption about three and a half times better than chance and
-  cannot detect it, which is why the CRC exists. The first version of that test
-  demanded eighty percent detection and was simply wrong about what soft decisions
-  can do.
-
-### Fixed
-
-- **The intra-frame layout was discarding up to 48 percent of every frame.** Shards must
-  all be the same size, so a layout can only address shardCount times shardSize bytes and
-  loses the remainder. Choosing the shard count first, as "take 256, the finest
-  granularity", maximises the count rather than the utilisation, and the two are not the
-  same thing. Found while densifying the social profile: doubling the bits per cell gained
-  fifteen percent of payload instead of doubling it, because the extra capacity landed in
-  the discarded remainder. `NewLayout` now searches shard sizes and keeps the one that
-  wastes least, preferring more shards on a tie. Waste across the four real candidate
-  geometries went from 0, 232, 247 and 21 bytes to 0, 0, 0 and 1. Two tests pin both the
-  utilisation and the symptom that exposed it.
-  - The `social` profile is unaffected, so its verified status still holds. `archive`
-    gains slightly: 26 419 payload bytes per frame at 17 percent overhead, up from
-    26 108 at 18.
-
-### Added
-
 - **`social-hd`, a third channel profile, verified against YouTube.** 15 pixel cells
   instead of 30, carrying 567 payload bytes per frame against 123, so 40 MiB becomes
   **41 minutes of video instead of 3 hours 9**.
@@ -166,17 +125,38 @@ patched by CI at tag time and are never committed with a real version number.
   committing the consequence. Candidates report themselves as `-candidate` and unverified
   on every line.
 
-### Documentation
+### Changed
 
-- README rewritten for someone who has never heard of carrying data in video: what it
-  does, why anyone would want it, and how the codec works explained through the picture
-  it actually draws rather than through its internals. Leads with the YouTube result,
-  keeps every honest limit (not steganography, no sender authentication, losing the key
-  loses the data, using a platform as storage likely breaks its terms), and drops the
-  comparisons to other tools, which said more about them than about this one.
-- Fixed a contradiction the rewrite exposed: the profile section still claimed neither
-  profile had been measured, four sections below the summary announcing that `social` had
-  been verified against every YouTube rendition.
+- Profiles no longer declare their own redundancy. `Redundancy` became a method that
+  reads the real layout, and the published figures moved with it: the social profile
+  costs 114 percent overhead, not the 40 percent previously advertised. The number
+  was aspirational; this one is arithmetic.
+
+- `golang.org/x/crypto` raised from v0.42.0 to v0.56.0, clearing four CVEs Trivy
+  reported against `golang.org/x/crypto/ssh`. That package is not imported here, and
+  govulncheck was green throughout, which is the expected disagreement between a
+  call-graph scanner and a manifest scanner rather than a false alarm to suppress.
+
+### Fixed
+
+- **The intra-frame layout was discarding up to 48 percent of every frame.** Shards must
+  all be the same size, so a layout can only address shardCount times shardSize bytes and
+  loses the remainder. Choosing the shard count first, as "take 256, the finest
+  granularity", maximises the count rather than the utilisation, and the two are not the
+  same thing. Found while densifying the social profile: doubling the bits per cell gained
+  fifteen percent of payload instead of doubling it, because the extra capacity landed in
+  the discarded remainder. `NewLayout` now searches shard sizes and keeps the one that
+  wastes least, preferring more shards on a tie. Waste across the four real candidate
+  geometries went from 0, 232, 247 and 21 bytes to 0, 0, 0 and 1. Two tests pin both the
+  utilisation and the symptom that exposed it.
+  - The `social` profile is unaffected, so its verified status still holds. `archive`
+    gains slightly: 26 393 payload bytes per frame at 17 percent overhead, up from
+    26 108 at 18.
+
+- Argon2id pass count is now bounded on parse. The memory ceiling alone did not close
+  the denial of service: a header declaring sixteen million passes hangs a decoder
+  just as effectively as one declaring four terabytes of memory. Found because it made
+  the test suite take three minutes instead of half a second.
 
 ### Security
 
@@ -202,21 +182,42 @@ called findings.
   for and could not notice, with the wrong value written permanently into the header.
   The conversion now refuses instead of truncating.
 
-### Changed
+### Measured
 
-- Profiles no longer declare their own redundancy. `Redundancy` became a method that
-  reads the real layout, and the published figures moved with it: the social profile
-  costs 114 percent overhead, not the 40 percent previously advertised. The number
-  was aspirational; this one is arithmetic.
+- **Real platform round trip, 2026-09-05.** A 45 second Short carrying 160 KiB of
+  incompressible payload was uploaded to YouTube unlisted, and every rendition YouTube
+  produced was downloaded and decoded. All nine recovered the payload byte for byte:
+  1080x1920 in H.264, VP9 and AV1, then 720x1280, 608x1080, 480x854, 360x640, 240x426
+  and 144x256. The `social` profile is now marked `Verified`.
+  - YouTube cost nothing: the three unreadable frames out of 1344 are the same three
+    that failed locally before the upload, so they come from this codec's registration
+    rather than from the platform.
+  - The profile is heavily overbuilt. Designed for a scaling factor of 8/15, it
+    survived 1/7.5, with cells reduced to four pixels and AV1 at a twentieth of the
+    source bitrate. A much denser social profile is possible, on measurement.
 
-- `golang.org/x/crypto` raised from v0.42.0 to v0.56.0, clearing four CVEs Trivy
-  reported against `golang.org/x/crypto/ssh`. That package is not imported here, and
-  govulncheck was green throughout, which is the expected disagreement between a
-  call-graph scanner and a manifest scanner rather than a false alarm to suppress.
+- Soft demodulation, on the social geometry at a 1.75 percent raw byte error rate:
+  30 of 32 frames repaired using confidence, 3 without it.
+- Error envelope of the social geometry: 25 percent intra parity carries 123 payload
+  bytes per frame at 114 percent overhead and survives up to 2.8 percent raw byte
+  errors; 50 percent carries 81 bytes at 225 percent overhead and survives up to 4.3
+  percent. Both figures come from a test that will fail if they regress.
+- Real H.264, measured by `simulate` on this machine: the `social` profile decoded at
+  every quality tested down to CRF 42; `archive` decoded at CRF 18 and 23 and failed
+  at 28. Local re-encodes only, so a lower bound on what a platform does.
+- Confidence ranks corruption about three and a half times better than chance and
+  cannot detect it, which is why the CRC exists. The first version of that test
+  demanded eighty percent detection and was simply wrong about what soft decisions
+  can do.
 
-### Fixed
+### Documentation
 
-- Argon2id pass count is now bounded on parse. The memory ceiling alone did not close
-  the denial of service: a header declaring sixteen million passes hangs a decoder
-  just as effectively as one declaring four terabytes of memory. Found because it made
-  the test suite take three minutes instead of half a second.
+- README rewritten for someone who has never heard of carrying data in video: what it
+  does, why anyone would want it, and how the codec works explained through the picture
+  it actually draws rather than through its internals. Leads with the YouTube result,
+  keeps every honest limit (not steganography, no sender authentication, losing the key
+  loses the data, using a platform as storage likely breaks its terms), and drops the
+  comparisons to other tools, which said more about them than about this one.
+- Fixed a contradiction the rewrite exposed: the profile section still claimed neither
+  profile had been measured, four sections below the summary announcing that `social` had
+  been verified against every YouTube rendition.
