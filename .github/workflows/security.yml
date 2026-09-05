@@ -62,7 +62,7 @@ jobs:
         # built only around the SARIF step therefore reports everything to the
         # Security tab and never fails, which looks like a passing gate while
         # gating nothing.
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
           scan-ref: .
@@ -73,7 +73,7 @@ jobs:
 
       - name: Trivy, SARIF for the Security tab
         if: always()
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
           scan-ref: .
@@ -99,6 +99,17 @@ jobs:
           fetch-depth: 0
 
       - name: Run gitleaks
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
+        # The upstream action is used deliberately *not*: gitleaks-action requires a
+        # paid licence key on any repository owned by an organisation, and fails the
+        # job outright without one. The scanner itself is MIT licensed, so running
+        # the release binary gives the same detection with no licensing condition.
+        #
+        # --redact matters: without it a genuine finding is printed in full to a
+        # public build log, which turns the alert into a second disclosure.
+        run: |
+          set -euo pipefail
+          VERSION=8.30.1
+          curl -sSfL -o gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz"
+          tar -xzf gitleaks.tar.gz gitleaks
+          ./gitleaks git . --redact --verbose --exit-code 1
