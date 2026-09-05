@@ -48,7 +48,38 @@ patched by CI at tag time and are never committed with a real version number.
 - `docs/FORMAT.md`, a normative specification of the container format, including the
   obligations a reader must meet to be safe.
 
+- `internal/modem`: modulation with soft demodulation. Every cell comes back with a
+  confidence, the distance from the nearest decision boundary, instead of being
+  flattened to a bit by a fixed threshold. Per-frame amplitude calibration recovers
+  the crushed black and white levels a video round trip leaves behind.
+- `internal/fec`: two-layer erasure coding. An intra-frame code repairs cells so a
+  lightly damaged frame still yields a correct shard, and an inter-frame code repairs
+  whole dropped frames. Sub-shards are erased in confidence order and validated by
+  CRC, never by confidence alone. Frames may arrive out of order, duplicated or
+  missing, which is what rate conversion actually does to them.
+- `fec.NewLayout` derives the intra-frame granularity rather than taking it as a
+  constant, and `Layout.Overhead` derives the redundancy from the layout, so an
+  advertised figure cannot drift away from what the code costs.
+
+### Measured
+
+- Soft demodulation, on the social geometry at a 1.75 percent raw byte error rate:
+  30 of 32 frames repaired using confidence, 3 without it.
+- Error envelope of the social geometry: 25 percent intra parity carries 123 payload
+  bytes per frame at 114 percent overhead and survives up to 2.8 percent raw byte
+  errors; 50 percent carries 81 bytes at 225 percent overhead and survives up to 4.3
+  percent. Both figures come from a test that will fail if they regress.
+- Confidence ranks corruption about three and a half times better than chance and
+  cannot detect it, which is why the CRC exists. The first version of that test
+  demanded eighty percent detection and was simply wrong about what soft decisions
+  can do.
+
 ### Changed
+
+- Profiles no longer declare their own redundancy. `Redundancy` became a method that
+  reads the real layout, and the published figures moved with it: the social profile
+  costs 114 percent overhead, not the 40 percent previously advertised. The number
+  was aspirational; this one is arithmetic.
 
 - `golang.org/x/crypto` raised from v0.42.0 to v0.56.0, clearing four CVEs Trivy
   reported against `golang.org/x/crypto/ssh`. That package is not imported here, and

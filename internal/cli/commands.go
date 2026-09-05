@@ -274,7 +274,7 @@ func runEstimate(env *Env, args []string) error {
 	for _, p := range profiles {
 		e := p.Estimate(int64(len(data)), sealed)
 		fmt.Fprintf(env.Stdout, "  %-8s %dx%d, %d px cells, %d levels, %.0f%% parity\n",
-			p.Name, p.Width, p.Height, p.CellSize, p.Levels, p.Redundancy*100)
+			p.Name, p.Width, p.Height, p.CellSize, p.Levels, p.Redundancy()*100)
 		fmt.Fprintf(env.Stdout, "           %s per frame, %s/s\n",
 			humanBytes(int64(p.PayloadBytesPerFrame())), humanBytes(int64(e.BytesPerSec)))
 		fmt.Fprintf(env.Stdout, "           %d frames, %s of video at %d fps\n",
@@ -297,7 +297,7 @@ func runProfiles(env *Env, args []string) error {
 	for _, p := range profile.All() {
 		fmt.Fprintf(env.Stdout, "%s\n  %s\n", p.Name, p.Summary)
 		fmt.Fprintf(env.Stdout, "  %dx%d at %d fps, %d px cells, %d levels, %.0f%% parity\n",
-			p.Width, p.Height, p.FPS, p.CellSize, p.Levels, p.Redundancy*100)
+			p.Width, p.Height, p.FPS, p.CellSize, p.Levels, p.Redundancy()*100)
 		fmt.Fprintf(env.Stdout, "  %s per frame, %s/s\n\n",
 			humanBytes(int64(p.PayloadBytesPerFrame())),
 			humanBytes(int64(p.PayloadBytesPerFrame()*p.FPS)))

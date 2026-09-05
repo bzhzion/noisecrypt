@@ -61,12 +61,22 @@ func TestLookup(t *testing.T) {
 }
 
 func TestValidateRejectsBrokenProfiles(t *testing.T) {
+	sane := func(p Profile) Profile {
+		p.IntraParityRatio, p.InterData, p.InterParity = 0.2, 8, 2
+		return p
+	}
+
 	cases := map[string]Profile{
-		"odd level count":  {Name: "x", Width: 640, Height: 480, FPS: 30, CellSize: 8, Levels: 3},
-		"zero cell size":   {Name: "x", Width: 640, Height: 480, FPS: 30, CellSize: 0, Levels: 2},
-		"margins too wide": {Name: "x", Width: 64, Height: 64, FPS: 30, CellSize: 8, Levels: 2, Margin: 40},
-		"zero frame rate":  {Name: "x", Width: 640, Height: 480, FPS: 0, CellSize: 8, Levels: 2},
-		"absurd parity":    {Name: "x", Width: 640, Height: 480, FPS: 30, CellSize: 8, Levels: 2, Redundancy: 99},
+		"odd level count":  sane(Profile{Name: "x", Width: 640, Height: 480, FPS: 30, CellSize: 8, Levels: 3}),
+		"zero cell size":   sane(Profile{Name: "x", Width: 640, Height: 480, FPS: 30, CellSize: 0, Levels: 2}),
+		"margins too wide": sane(Profile{Name: "x", Width: 64, Height: 64, FPS: 30, CellSize: 8, Levels: 2, Margin: 40}),
+		"zero frame rate":  sane(Profile{Name: "x", Width: 640, Height: 480, FPS: 0, CellSize: 8, Levels: 2}),
+		"absurd parity ratio": {Name: "x", Width: 640, Height: 480, FPS: 30, CellSize: 8, Levels: 2,
+			IntraParityRatio: 1.5, InterData: 8, InterParity: 2},
+		"no inter parity": {Name: "x", Width: 640, Height: 480, FPS: 30, CellSize: 8, Levels: 2,
+			IntraParityRatio: 0.2, InterData: 8, InterParity: 0},
+		"frame too small for a header": {Name: "x", Width: 64, Height: 64, FPS: 30, CellSize: 30, Levels: 2,
+			IntraParityRatio: 0.2, InterData: 8, InterParity: 2},
 	}
 
 	for name, p := range cases {
@@ -82,31 +92,65 @@ func TestEstimate(t *testing.T) {
 	const sealed = 40 * 1024 * 1024
 
 	for _, p := range All() {
+		l, err := p.Layout()
+		if err != nil {
+			t.Fatalf("%s: Layout: %v", p.Name, err)
+		}
 		e := p.Estimate(sealed, sealed)
 
 		if e.Frames <= 0 {
 			t.Fatalf("%s: %d frames", p.Name, e.Frames)
 		}
-		// Frames must be enough to carry the payload, and no more than one frame
-		// of slack beyond it.
-		carried := e.Frames * int64(p.PayloadBytesPerFrame())
-		if carried < sealed {
-			t.Fatalf("%s: %d frames carry %d bytes, need %d", p.Name, e.Frames, carried, sealed)
+		// Frames come in whole blocks, so the check is that the blocks carry the
+		// payload and that dropping one block would not.
+		if e.Frames%int64(l.FramesPerBlock()) != 0 {
+			t.Fatalf("%s: %d frames is not a whole number of blocks of %d",
+				p.Name, e.Frames, l.FramesPerBlock())
 		}
-		if carried-int64(p.PayloadBytesPerFrame()) >= sealed {
-			t.Fatalf("%s: %d frames is one more than needed", p.Name, e.Frames)
+		blocks := e.Frames / int64(l.FramesPerBlock())
+		if carried := blocks * int64(l.BlockPayload()); carried < sealed {
+			t.Fatalf("%s: %d blocks carry %d bytes, need %d", p.Name, blocks, carried, sealed)
+		}
+		if blocks > 1 && (blocks-1)*int64(l.BlockPayload()) >= sealed {
+			t.Fatalf("%s: %d blocks is one more than needed", p.Name, blocks)
 		}
 
 		want := float64(e.Frames) / float64(p.FPS)
 		if math.Abs(e.Duration-want) > 1e-9 {
 			t.Fatalf("%s: duration %.3f, want %.3f", p.Name, e.Duration, want)
 		}
+
+		t.Logf("%s: %d payload bytes per frame, %.0f%% overhead, 40 MiB becomes %d frames (%.0f s)",
+			p.Name, p.PayloadBytesPerFrame(), p.Redundancy()*100, e.Frames, e.Duration)
+	}
+}
+
+// TestRedundancyIsDerivedNotDeclared is the guard against the failure this package
+// was restructured to prevent: an advertised overhead that no longer matches the
+// layout it describes.
+func TestRedundancyIsDerivedNotDeclared(t *testing.T) {
+	for _, p := range All() {
+		l, err := p.Layout()
+		if err != nil {
+			t.Fatalf("%s: Layout: %v", p.Name, err)
+		}
+		if got, want := p.Redundancy(), l.Overhead(); got != want {
+			t.Fatalf("%s: profile reports %.4f overhead, its layout costs %.4f", p.Name, got, want)
+		}
+		if p.Redundancy() <= 0 {
+			t.Fatalf("%s: reported %.4f overhead with parity on both layers", p.Name, p.Redundancy())
+		}
 	}
 }
 
 func TestEstimateHandlesEmptyInput(t *testing.T) {
+	l, err := Archive.Layout()
+	if err != nil {
+		t.Fatalf("Layout: %v", err)
+	}
 	e := Archive.Estimate(0, 0)
-	if e.Frames != 1 {
-		t.Fatalf("an empty payload should still produce one frame, got %d", e.Frames)
+	if e.Frames != int64(l.FramesPerBlock()) {
+		t.Fatalf("an empty payload should still produce one block of %d frames, got %d",
+			l.FramesPerBlock(), e.Frames)
 	}
 }

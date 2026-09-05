@@ -6,10 +6,11 @@ as video.
 Any file goes in: text, Markdown, JSON, PDF, archives, binaries. The format is byte
 oriented and knows nothing about what it carries.
 
-> **Status.** The encryption and container layers are complete and tested. The video
-> codec is not written yet, so today the tool seals and opens `.ncry` containers and
-> tells you what encoding one would cost. See [Roadmap](#roadmap) for what lands next
-> and in what order.
+> **Status.** Encryption, container, modulation and error correction are written and
+> tested, including against a simulated noisy channel. What is still missing is the
+> geometry recovery and the FFmpeg plumbing, so today the tool seals and opens `.ncry`
+> containers and tells you what encoding one would cost, but does not yet emit an
+> `.mp4`. See [Roadmap](#roadmap).
 
 ## Why
 
@@ -53,6 +54,35 @@ coding that makes this format work in the first place. NoiseCrypt uses the STREA
 construction: each chunk is sealed separately with its index and an end-of-stream flag
 bound into the nonce and the associated data. Chunks cannot be reordered, dropped from
 the end, or spliced in from another message.
+
+## Codec design
+
+Two decisions carry the codec, and both were measured rather than assumed.
+
+**Soft demodulation.** Reading a cell back as `grey < 128 ? 0 : 1` throws away the most
+useful thing the channel offers: a cell measured at 130 and one measured at 250 both
+become "one", though the first is a coin flip. This codec keeps a confidence per cell
+and uses it to choose which pieces to erase, which matters because Reed-Solomon
+corrects twice as many erasures as errors. Measured at a 1.75 percent raw byte error
+rate: 30 of 32 frames repaired with confidence, 3 without it.
+
+Confidence ranks corruption; it does not detect it. A cell pushed well past a decision
+boundary lands near the neighbouring level and reports high confidence while being
+wrong. It beats chance by about three and a half times, which is a good way to
+prioritise erasures and a useless way to certify a result, so every reconstruction is
+validated by a CRC instead.
+
+**Two coding layers, because a video channel breaks data two different ways.** Inside a
+frame, blur and quantisation flip scattered cells; across frames, rate conversion drops
+whole frames. A frame-level code alone recovers nothing when every frame has one bad
+cell, and a cell-level code alone cannot see a missing frame at all.
+
+The intra-frame granularity is finer than it looks like it should be, and that was the
+single biggest correction during development. An early version used eighteen sub-shards
+of twelve bytes and collapsed completely at four percent byte errors: scattered damage
+touches nearly every large shard. One shard per byte, up to the 256-symbol ceiling of
+GF(256), leaves the payload size identical and improves the tolerance by an order of
+magnitude.
 
 **Metadata is confidential.** The file name, its size and its modification time live
 inside the ciphertext. The cleartext header says how to decrypt, never what was
@@ -135,10 +165,15 @@ answer arrives before the encode rather than after.
 noisecrypt profiles
 ```
 
-| Profile | For | Trade |
-|---|---|---|
-| `archive` | Channels that do not re-encode: disk, object storage, USB, torrent | Dense. Small cells, four amplitude levels, low parity. |
-| `social` | Platforms that re-encode: vertical video, heavy downscaling, deblocking | Robust. Large cells, two levels, 40 percent parity. |
+| Profile | For | Payload per frame | Overhead | 40 MiB becomes |
+|---|---|---|---|---|
+| `archive` | Channels that do not re-encode: disk, object storage, USB, torrent | 26 108 B | 18 % | 1 610 frames, 54 s |
+| `social` | Platforms that re-encode: vertical video, heavy downscaling, deblocking | 123 B | 114 % | 341 024 frames, 3 h 09 |
+
+Those figures are computed from the real error-correcting layout, not declared next
+to it. `Redundancy` is a method that reads the layout, so a tuning change cannot leave
+the advertised number behind. An earlier draft of this table claimed 40 percent
+overhead for `social`; that was an intention, and the arithmetic disagreed.
 
 The `social` cell size is 30 pixels, and that is not arbitrary. A platform scaling
 1080 down to 576 applies a factor of 8/15; a cell size that is not a multiple of 15
@@ -167,11 +202,9 @@ Releases are cut from version tags only. Nothing publishes on a branch push.
 
 Ordered by what unblocks the most.
 
-1. **Video codec.** Modulation with soft demodulation, erasure coding across frames,
-   geometric recovery from corner fiducials, FFmpeg muxing. The design is fixed:
-   per-cell confidence reaches the decoder instead of being destroyed by a fixed
-   threshold, and a fountain-style code decodes from any sufficient subset of frames
-   rather than from a rigid block layout.
+1. **Geometry recovery and FFmpeg muxing**, the two pieces left between the codec and
+   an actual `.mp4`. Corner fiducials to estimate a homography, so a cropped,
+   letterboxed or rescaled video still lands on the right cells.
 2. **`noisecrypt simulate`.** Re-encode a produced video locally at several
    compression levels and report whether it still decodes. This is what turns the
    profile table from folklore into measurement, and it is the feature the author

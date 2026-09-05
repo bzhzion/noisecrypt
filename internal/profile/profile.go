@@ -1,21 +1,29 @@
 // Package profile holds the channel profiles: the parameters that decide how many
 // bytes fit in a frame and how much abuse that frame survives.
 //
-// Every number in this file is a hypothesis until `noisecrypt simulate` measures
-// it. That is stated here rather than buried, because the tool this project grew
-// out of shipped a hand-tuned constant with no way for anyone to check it, and a
-// constant nobody can check is indistinguishable from a guess.
+// Nothing here declares its own overhead. Frame capacity, payload size and
+// redundancy are all derived from the actual error-correcting layout, so a tuning
+// change cannot quietly leave the advertised figure behind. A profile that states
+// its redundancy as a constant is stating an intention, not a fact.
+//
+// The geometry itself is still a hypothesis until `noisecrypt simulate` measures it
+// against a real re-encoding pass, and every profile says so through Verified. That
+// is stated rather than buried, because the tool this project grew out of shipped a
+// hand-tuned constant with no way for anyone to check it, and a constant nobody can
+// check is indistinguishable from a guess.
 package profile
 
 import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/bzhzion/noisecrypt/internal/fec"
 )
 
 // Profile describes one point on the density-versus-survival curve.
 type Profile struct {
-	// Name is the value accepted by the --profile flag.
+	// Name is the value accepted by the -profile flag.
 	Name string
 
 	// Summary is the one-line description shown by `noisecrypt profiles`.
@@ -39,33 +47,41 @@ type Profile struct {
 	// letterbox; a border gives the geometry recovery something to lose.
 	Margin int
 
-	// Redundancy is the fraction of parity symbols the erasure layer adds on top
-	// of the payload. 0.15 means fifteen percent overhead.
-	Redundancy float64
+	// IntraParityRatio is the fraction of a frame's sub-shards spent on parity
+	// against cell-level damage. Measured effect, on the social geometry: 25
+	// percent survives up to 2.8 percent raw byte errors, 50 percent survives up
+	// to 4.3 percent and costs a third of the payload.
+	IntraParityRatio float64
 
-	// Verified records whether these parameters have been measured against a real
-	// re-encoding pass, or are still an educated guess.
+	// InterData and InterParity size the code across frames, against whole frames
+	// being dropped by rate conversion or cuts.
+	InterData, InterParity int
+
+	// Verified records whether this geometry has been measured against a real
+	// re-encoding pass, or is still an educated guess.
 	Verified bool
 }
 
 // Archive targets channels we control: a file on a drive, in object storage, on a
 // USB stick, in a torrent. Nothing re-encodes it, so density can be pushed hard.
 //
-// Four-pixel cells at four levels give two bits per cell. That is roughly seventy
-// times the throughput of a one-bit-per-cell scheme at a comparable resolution, and
-// it is only defensible because the channel is lossless: the same settings pushed
-// through a social platform would not decode at all.
+// Four-pixel cells at four levels give two bits per cell, which is only defensible
+// because the channel is lossless: the same settings pushed through a social
+// platform would not decode at all. Parity is correspondingly thin, and exists for
+// bit rot and partial downloads rather than for compression damage.
 var Archive = Profile{
-	Name:       "archive",
-	Summary:    "dense, for channels that do not re-encode (disk, object storage, USB, torrent)",
-	Width:      1920,
-	Height:     1080,
-	FPS:        30,
-	CellSize:   4,
-	Levels:     4,
-	Margin:     16,
-	Redundancy: 0.15,
-	Verified:   false,
+	Name:             "archive",
+	Summary:          "dense, for channels that do not re-encode (disk, object storage, USB, torrent)",
+	Width:            1920,
+	Height:           1080,
+	FPS:              30,
+	CellSize:         4,
+	Levels:           4,
+	Margin:           16,
+	IntraParityRatio: 0.07,
+	InterData:        64,
+	InterParity:      6,
+	Verified:         false,
 }
 
 // Social targets platforms that re-encode aggressively: vertical video, heavy
@@ -79,19 +95,22 @@ var Archive = Profile{
 // folklore, and it generalises: pick a cell size divisible by the denominator of
 // the platform's scaling factor.
 //
-// Redundancy is high on purpose. On a hostile channel, spending forty percent on
-// parity to decode at all beats spending fifteen and decoding nothing.
+// Parity is heavy on both layers on purpose. On a hostile channel, spending most of
+// the frame on redundancy and decoding at all beats spending a little and decoding
+// nothing.
 var Social = Profile{
-	Name:       "social",
-	Summary:    "robust, for platforms that re-encode (vertical 9:16, heavy downscaling)",
-	Width:      1080,
-	Height:     1920,
-	FPS:        30,
-	CellSize:   30,
-	Levels:     2,
-	Margin:     30,
-	Redundancy: 0.40,
-	Verified:   false,
+	Name:             "social",
+	Summary:          "robust, for platforms that re-encode (vertical 9:16, heavy downscaling)",
+	Width:            1080,
+	Height:           1920,
+	FPS:              30,
+	CellSize:         30,
+	Levels:           2,
+	Margin:           30,
+	IntraParityRatio: 0.25,
+	InterData:        24,
+	InterParity:      8,
+	Verified:         false,
 }
 
 var registry = map[string]Profile{
@@ -151,17 +170,34 @@ func (p Profile) Grid() (cols, rows int) {
 	return usableW / p.CellSize, usableH / p.CellSize
 }
 
-// RawBytesPerFrame is the modulation capacity of one frame, before the erasure
-// layer takes its share.
+// RawBytesPerFrame is the modulation capacity of one frame, before any coding.
 func (p Profile) RawBytesPerFrame() int {
 	cols, rows := p.Grid()
 	return cols * rows * p.BitsPerCell() / 8
 }
 
-// PayloadBytesPerFrame is what actually reaches the container layer, after parity.
+// Layout builds the error-correcting layout this profile implies.
+func (p Profile) Layout() (fec.Layout, error) {
+	return fec.NewLayout(p.RawBytesPerFrame(), p.IntraParityRatio, p.InterData, p.InterParity)
+}
+
+// PayloadBytesPerFrame is what actually reaches the container layer, averaged over
+// a block so that the parity frames are accounted for.
 func (p Profile) PayloadBytesPerFrame() int {
-	raw := float64(p.RawBytesPerFrame())
-	return int(raw / (1 + p.Redundancy))
+	l, err := p.Layout()
+	if err != nil {
+		return 0
+	}
+	return l.ShardSize() * l.InterData / l.FramesPerBlock()
+}
+
+// Redundancy is the measured overhead of the layout, not a declared constant.
+func (p Profile) Redundancy() float64 {
+	l, err := p.Layout()
+	if err != nil {
+		return 0
+	}
+	return l.Overhead()
 }
 
 // Validate reports parameters that cannot produce a working codec.
@@ -179,8 +215,8 @@ func (p Profile) Validate() error {
 	if p.FPS <= 0 {
 		return fmt.Errorf("profile %q: frame rate must be positive", p.Name)
 	}
-	if p.Redundancy < 0 || p.Redundancy > 4 {
-		return fmt.Errorf("profile %q: redundancy %.2f is outside [0, 4]", p.Name, p.Redundancy)
+	if _, err := p.Layout(); err != nil {
+		return fmt.Errorf("profile %q: %w", p.Name, err)
 	}
 	if p.PayloadBytesPerFrame() <= 0 {
 		return fmt.Errorf("profile %q: no payload capacity left after parity", p.Name)
@@ -209,24 +245,20 @@ type Estimate struct {
 // sealedBytes is the size *after* packing and sealing, not the raw file size: the
 // caller knows the compression outcome and this package should not guess at it.
 func (p Profile) Estimate(inputBytes, sealedBytes int64) Estimate {
-	perFrame := int64(p.PayloadBytesPerFrame())
-	frames := int64(0)
-	if perFrame > 0 {
-		frames = (sealedBytes + perFrame - 1) / perFrame
-		if frames == 0 {
-			frames = 1
-		}
-	}
-
 	e := Estimate{
 		Profile:     p,
 		InputBytes:  inputBytes,
 		SealedBytes: sealedBytes,
-		Frames:      frames,
-		BytesPerSec: float64(perFrame) * float64(p.FPS),
+		BytesPerSec: float64(p.PayloadBytesPerFrame()) * float64(p.FPS),
 	}
+
+	l, err := p.Layout()
+	if err != nil {
+		return e
+	}
+	e.Frames = int64(l.FrameCount(int(sealedBytes)))
 	if p.FPS > 0 {
-		e.Duration = float64(frames) / float64(p.FPS)
+		e.Duration = float64(e.Frames) / float64(p.FPS)
 	}
 	if inputBytes > 0 {
 		e.Expansion = float64(sealedBytes) / float64(inputBytes)
