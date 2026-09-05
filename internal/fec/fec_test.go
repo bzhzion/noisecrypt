@@ -61,6 +61,61 @@ func TestLayoutValidation(t *testing.T) {
 	}
 }
 
+// TestLayoutDoesNotWasteFrameCapacity covers a real defect found while densifying the
+// social profile. Every shard must be the same size, so a layout can only address
+// shardCount times shardSize bytes; taking the count first and deriving the size from
+// it maximises the count and discards the remainder.
+//
+// Measured before the fix: 488 usable bytes became 256 shards of one, using 256 and
+// throwing away 232. Forty-eight percent of the frame.
+func TestLayoutDoesNotWasteFrameCapacity(t *testing.T) {
+	// Frame sizes taken from real candidate geometries: 30 px cells at two and four
+	// levels, then 15 px cells at two and four.
+	for _, frameBytes := range []int{263, 527, 1054, 2108} {
+		l, err := NewLayout(frameBytes, 0.25, 24, 8)
+		if err != nil {
+			t.Fatalf("NewLayout(%d): %v", frameBytes, err)
+		}
+
+		available := frameBytes - HeaderRegion
+		used := (l.IntraData + l.IntraParity) * l.IntraShardSize()
+		wasted := available - used
+		ratio := float64(wasted) / float64(available)
+
+		t.Logf("%d frame bytes: %d available, %d shards of %d, %d used, %d wasted (%.0f%%)",
+			frameBytes, available, l.IntraData+l.IntraParity, l.IntraShardSize(), used, wasted, ratio*100)
+
+		// Perfect utilisation is not always reachable, since the size has to divide
+		// evenly, but a few percent is the most a sensible layout should lose.
+		if ratio > 0.05 {
+			t.Errorf("%d frame bytes: %.0f%% of the frame is unused, which the shard search should avoid",
+				frameBytes, ratio*100)
+		}
+	}
+}
+
+// TestMoreLevelsMeansMorePayload is the symptom that exposed the waste above: doubling
+// the bits per cell gained fifteen percent of payload instead of roughly doubling it,
+// because the extra capacity landed in the discarded remainder.
+func TestMoreLevelsMeansMorePayload(t *testing.T) {
+	twoLevels, err := NewLayout(263, 0.25, 24, 8)
+	if err != nil {
+		t.Fatalf("NewLayout: %v", err)
+	}
+	fourLevels, err := NewLayout(527, 0.25, 24, 8)
+	if err != nil {
+		t.Fatalf("NewLayout: %v", err)
+	}
+
+	gain := float64(fourLevels.ShardSize()) / float64(twoLevels.ShardSize())
+	t.Logf("two levels carry %d payload bytes per frame, four carry %d, a gain of %.2fx",
+		twoLevels.ShardSize(), fourLevels.ShardSize(), gain)
+
+	if gain < 1.8 {
+		t.Errorf("doubling the bits per cell gained only %.2fx of payload; capacity is being discarded", gain)
+	}
+}
+
 func TestRoundTripClean(t *testing.T) {
 	l := testLayout()
 

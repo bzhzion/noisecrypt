@@ -116,9 +116,25 @@ type Layout struct {
 // percent of them; the same eight errors across two hundred and twenty-four shards
 // ruin under four percent.
 //
-// So this picks the finest granularity the code allows: one shard per byte, up to
-// the two hundred and fifty-six symbol ceiling of GF(256). The payload comes out
-// identical, and the error tolerance improves by an order of magnitude for free.
+// So this wants the finest granularity the code allows, one shard per byte, up to the
+// two hundred and fifty-six symbol ceiling of GF(256).
+//
+// # Why it is a search rather than one formula
+//
+// "Take 256 shards" was the first version and it silently discarded frame capacity.
+// Every shard has to be the same size, so the bytes a layout can actually use are
+// shardCount times shardSize, and the remainder up to the frame's capacity is thrown
+// away. Taking the shard count first and deriving the size from it maximises the
+// count, not the utilisation, and the two are not the same thing.
+//
+// Measured on real geometries when the social profile was being densified: 488 usable
+// bytes became 256 shards of one byte, using 256 and discarding 232. Forty-eight
+// percent of the frame, gone, for no benefit. At 1015 bytes it discarded a quarter.
+//
+// So this searches the shard sizes instead and keeps the one that wastes least,
+// preferring the smaller size when two tie, because small shards are what buys the
+// tolerance to scattered errors described above. 488 bytes then become 244 shards of
+// two, using all of them.
 func NewLayout(frameBytes int, intraParityRatio float64, interData, interParity int) (Layout, error) {
 	available := frameBytes - HeaderRegion
 	if available <= 1 {
@@ -130,7 +146,7 @@ func NewLayout(frameBytes int, intraParityRatio float64, interData, interParity 
 			ErrInvalidLayout, intraParityRatio)
 	}
 
-	total := min(maxShards, available)
+	total := bestShardCount(available)
 	parity := max(1, int(float64(total)*intraParityRatio+0.5))
 	if parity >= total {
 		return Layout{}, fmt.Errorf("%w: intra parity ratio %.3f leaves no data shards",
@@ -148,6 +164,32 @@ func NewLayout(frameBytes int, intraParityRatio float64, interData, interParity 
 		return Layout{}, err
 	}
 	return l, nil
+}
+
+// bestShardCount picks the intra-frame shard count that leaves the fewest frame bytes
+// unused, preferring more shards when two counts waste the same amount.
+func bestShardCount(available int) int {
+	bestCount, bestUsed := 0, -1
+
+	// Iterating shard sizes rather than counts, because the size is what determines
+	// how much of the frame a layout can address.
+	for size := 1; size <= available; size++ {
+		count := min(maxShards, available/size)
+		if count < 2 {
+			// Below two shards there is no code left to build, and larger sizes
+			// only make that worse.
+			break
+		}
+		used := count * size
+		if used > bestUsed || (used == bestUsed && count > bestCount) {
+			bestCount, bestUsed = count, used
+		}
+	}
+
+	if bestCount == 0 {
+		return min(maxShards, available)
+	}
+	return bestCount
 }
 
 // Validate reports a layout that cannot work.

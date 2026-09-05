@@ -222,11 +222,20 @@ func runDecode(env *Env, args []string) error {
 // profile is an answer to, and until now nobody could ask it: the tuning constant
 // this project inherited was chosen once, by hand, and no user could check it.
 func runSimulate(env *Env, args []string) error {
-	fs := newFlagSet(env, "simulate", "[-in FILE] [-profile NAME]")
+	fs := newFlagSet(env, "simulate", "[-in FILE] [-profile NAME] [geometry overrides]")
 	in := fs.String("in", "", "file to use as the payload (default: a synthetic one block payload)")
 	profileName := fs.String("profile", "", "profile to test (default: all of them)")
 	crfList := fs.String("crf", "20,26,30,34,38,42", "comma separated x264 qualities to re-encode at")
 	keep := fs.String("keep", "", "directory to leave the produced videos in, for inspection")
+
+	// Geometry overrides, so a candidate can be measured before it is registered as
+	// a profile. Tuning a channel by editing a constant, rebuilding and eyeballing
+	// the result is how unverifiable magic numbers get into a codec; this makes the
+	// measurement the cheap step and the commit the consequence.
+	cell := fs.Int("cell", 0, "override the cell size in pixels")
+	levels := fs.Int("levels", 0, "override the amplitude levels per cell (2, 4 or 16)")
+	intraParity := fs.Float64("intra-parity", 0, "override the intra-frame parity ratio, 0 to 1")
+	interParity := fs.Int("inter-parity", 0, "override the number of parity frames per block")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -245,6 +254,34 @@ func runSimulate(env *Env, args []string) error {
 	if *profileName != "" {
 		p, err := profile.Lookup(*profileName)
 		if err != nil {
+			return err
+		}
+		profiles = []profile.Profile{p}
+	}
+
+	overridden := *cell != 0 || *levels != 0 || *intraParity != 0 || *interParity != 0
+	if overridden {
+		if len(profiles) != 1 {
+			return errors.New("geometry overrides need a single -profile to start from")
+		}
+		p := profiles[0]
+		if *cell != 0 {
+			p.CellSize = *cell
+		}
+		if *levels != 0 {
+			p.Levels = *levels
+		}
+		if *intraParity != 0 {
+			p.IntraParityRatio = *intraParity
+		}
+		if *interParity != 0 {
+			p.InterParity = *interParity
+		}
+		// A candidate is by definition not the measured profile it came from, and
+		// saying so on every line is the whole point of the flag.
+		p.Name = p.Name + "-candidate"
+		p.Verified = false
+		if err := p.Validate(); err != nil {
 			return err
 		}
 		profiles = []profile.Profile{p}

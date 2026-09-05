@@ -110,6 +110,31 @@ patched by CI at tag time and are never committed with a real version number.
   demanded eighty percent detection and was simply wrong about what soft decisions
   can do.
 
+### Fixed
+
+- **The intra-frame layout was discarding up to 48 percent of every frame.** Shards must
+  all be the same size, so a layout can only address shardCount times shardSize bytes and
+  loses the remainder. Choosing the shard count first, as "take 256, the finest
+  granularity", maximises the count rather than the utilisation, and the two are not the
+  same thing. Found while densifying the social profile: doubling the bits per cell gained
+  fifteen percent of payload instead of doubling it, because the extra capacity landed in
+  the discarded remainder. `NewLayout` now searches shard sizes and keeps the one that
+  wastes least, preferring more shards on a tie. Waste across the four real candidate
+  geometries went from 0, 232, 247 and 21 bytes to 0, 0, 0 and 1. Two tests pin both the
+  utilisation and the symptom that exposed it.
+  - The `social` profile is unaffected, so its verified status still holds. `archive`
+    gains slightly: 26 419 payload bytes per frame at 17 percent overhead, up from
+    26 108 at 18.
+
+### Added
+
+- `simulate` takes geometry overrides (`-cell`, `-levels`, `-intra-parity`,
+  `-inter-parity`) so a candidate can be measured before it is registered as a profile.
+  Tuning a channel by editing a constant, rebuilding and eyeballing the result is how
+  unverifiable magic numbers get into a codec; this makes measuring the cheap step and
+  committing the consequence. Candidates report themselves as `-candidate` and unverified
+  on every line.
+
 ### Documentation
 
 - README rewritten for someone who has never heard of carrying data in video: what it

@@ -261,7 +261,7 @@ noisecrypt profiles
 
 | Profile | Use it when | Data per frame | Overhead | A 40 MiB file becomes |
 |---|---|---|---|---|
-| `archive` | Nothing will re-encode the video: a hard drive, a USB stick, cloud storage, a torrent | 26 108 B | 18 % | 54 seconds |
+| `archive` | Nothing will re-encode the video: a hard drive, a USB stick, cloud storage, a torrent | 26 419 B | 17 % | 54 seconds |
 | `social` | A platform will chew on it: vertical video, heavy shrinking, repeated compression | 123 B | 114 % | 3 hours 9 minutes |
 
 The gap is dramatic and it is the central trade of the whole tool. Toughness is bought
