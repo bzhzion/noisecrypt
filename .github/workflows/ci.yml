@@ -1,0 +1,93 @@
+name: CI
+
+# Checks run on every push and pull request. Nothing here deploys or publishes:
+# releases are driven by version tags only, in release.yml.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          check-latest: true
+
+      - name: Check formatting
+        # Only on one platform: gofmt output is identical everywhere, and running
+        # it three times would just triple the noise on a formatting slip.
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          set -euo pipefail
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "::error::These files are not gofmt clean:"
+            echo "$unformatted" | sed 's/^/    /'
+            exit 1
+          fi
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Build
+        run: go build ./...
+
+      - name: Test
+        # The race detector is worth its runtime here: the encoding pipeline is
+        # designed to be concurrent, and a data race in a codec surfaces as
+        # corrupted output rather than a crash, which is the hardest kind to trace
+        # back to its cause.
+        run: go test -race ./...
+
+  cross-compile:
+    name: Cross-compile ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { goos: linux, goarch: amd64 }
+          - { goos: linux, goarch: arm64 }
+          - { goos: darwin, goarch: amd64 }
+          - { goos: darwin, goarch: arm64 }
+          - { goos: windows, goarch: amd64 }
+          - { goos: windows, goarch: arm64 }
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          check-latest: true
+
+      - name: Build
+        # CGO stays off deliberately. Every dependency is pure Go, which is what
+        # makes a six-target release a single matrix rather than six build hosts.
+        # Any future dependency that needs CGO costs that property, so this job
+        # exists to make the loss visible on the pull request that introduces it.
+        env:
+          CGO_ENABLED: 0
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: go build ./...

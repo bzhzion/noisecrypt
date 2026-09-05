@@ -1,0 +1,89 @@
+#!/bin/sh
+# Reminder: a code change comes with an entry in CHANGELOG.md, under the
+# "## [Unreleased]" section, which is renamed to a version number at tag time.
+#
+# Deliberately lenient: a commit touching only CI, docs or hooks passes without
+# asking for anything. Too many blocks produce empty entries written just to get
+# past the hook, which drains the changelog of its value.
+#
+# This hook is only a reminder: `git commit --no-verify` skips it, and it does not
+# exist at all in a clone that has not run `git config core.hooksPath .githooks`.
+# The real guarantee runs in CI at tag time (.github/workflows/changelog-guard.yml),
+# where it cannot be bypassed.
+#
+# Second, independent check in this same file: staged .yml/.yaml files. Added after
+# two real commits shipped broken GitHub Actions workflows, where an automated edit
+# wrote a literal backslash-n sequence (NOT an actual newline) inside a `run: |`
+# block, in place of a shell line continuation. Verified by hand: that case is
+# syntactically valid YAML (a literal block accepts any text), so a plain
+# `yaml.safe_load` never catches it. Only the embedded shell breaks, silently, the
+# day the job runs. The two checks below are therefore complementary, not redundant.
+# Best effort: if python3 is missing, the strict YAML check is skipped rather than
+# blocking an unrelated commit.
+#
+# Trap hit while writing this check: a naive grep for the backslash-n sequence
+# raises real false positives (`+ '\n');` in JS, `tr -d ' \n'` in shell), which are
+# legitimate escapes inside a string. The check below only reports occurrences NOT
+# followed by a closing quote, which tells them apart from a genuine broken
+# continuation.
+
+STAGED=$(git diff --cached --name-only)
+[ -z "$STAGED" ] && exit 0
+
+YAML_FILES=$(echo "$STAGED" | grep -E '\.(yml|yaml)$' || true)
+if [ -n "$YAML_FILES" ]; then
+  YAML_FAIL=0
+
+  # 1. Suspicious literal backslash-n sequence (not followed by a closing quote).
+  for f in $YAML_FILES; do
+    [ -f "$f" ] || continue
+    SUSPECT=$(grep -nE "\\\\n[^'\"]|\\\\n\$" "$f" | grep -vE '^[0-9]+:[[:space:]]*#' || true)
+    if [ -n "$SUSPECT" ]; then
+      echo ""
+      echo "  Suspicious literal backslash-n sequence in: $f"
+      echo "$SUSPECT" | sed 's/^/      /'
+      echo "  If a real line break is intended (e.g. a shell continuation), replace it"
+      echo "  with an actual newline in your editor."
+      YAML_FAIL=1
+    fi
+  done
+
+  # 2. Strict YAML validity (structure and indentation), best effort.
+  if command -v python3 >/dev/null 2>&1 && python3 -c "import yaml" >/dev/null 2>&1; then
+    for f in $YAML_FILES; do
+      [ -f "$f" ] || continue
+      ERR=$(python3 -c "import sys, yaml; yaml.safe_load(open(sys.argv[1], encoding='utf-8'))" "$f" 2>&1) || {
+        echo ""
+        echo "  Invalid YAML: $f"
+        echo "$ERR" | sed 's/^/      /'
+        YAML_FAIL=1
+      }
+    done
+  fi
+
+  if [ "$YAML_FAIL" = "1" ]; then
+    echo ""
+    echo "  (deliberate troubleshooting commit: git commit --no-verify)"
+    echo ""
+    exit 1
+  fi
+fi
+
+# Changelog already staged: nothing to report.
+echo "$STAGED" | grep -q "^CHANGELOG\.md$" && exit 0
+
+# Is everything staged outside application code?
+CODE=$(echo "$STAGED" | grep -vE '^(\.github/|\.githooks/|docs/|[^/]*\.md$|\.gitignore$|LICENSE$)')
+[ -z "$CODE" ] && exit 0
+
+echo ""
+echo "  CHANGELOG.md is not among the staged files."
+echo "  Add a line under \"## [Unreleased]\" describing this change, then:"
+echo "      git add CHANGELOG.md"
+echo ""
+echo "  Code files involved:"
+echo "$CODE" | sed 's/^/      /'
+echo ""
+echo "  (deliberate troubleshooting commit: git commit --no-verify)"
+echo ""
+exit 1

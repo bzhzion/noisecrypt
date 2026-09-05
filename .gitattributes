@@ -1,0 +1,16 @@
+# Normalise line endings in the repository, and check them out as LF everywhere.
+#
+# This is not cosmetic. A shell script checked out with CRLF fails on Linux and macOS
+# with "bad interpreter: /bin/sh^M", which is exactly what would happen to the git
+# hooks below if a Windows clone committed them back with CRLF. The repository is
+# developed on Windows and runs its CI on three platforms, so the ambiguity is real
+# rather than hypothetical.
+
+* text=auto eol=lf
+
+# Files that must never be touched.
+*.png binary
+*.jpg binary
+*.gif binary
+*.mp4 binary
+*.ncry binary

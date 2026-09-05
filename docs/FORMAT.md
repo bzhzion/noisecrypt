@@ -1,0 +1,236 @@
+# NoiseCrypt container format, version 1
+
+This document specifies the on-disk `.ncry` container. It is normative: an
+independent implementation that follows it interoperates with this one.
+
+The video layers (modulation, erasure coding, frame geometry) are not specified here
+and are not implemented yet. They will sit *above* this format, carrying the byte
+stream below unchanged.
+
+All integers are big endian. All offsets are in bytes.
+
+## Layers
+
+```
+  file bytes  +  name, mtime, size
+        |
+        v
+  [ inner payload ]        NCPL, section 2. Confidential: this is plaintext to
+        |                  the AEAD and never appears in the clear.
+        v
+  [ encrypted stream ]     NCR1, section 3. Cleartext header plus sealed chunks.
+        |
+        v
+  [ .ncry file ]           Exactly the encrypted stream, byte for byte.
+```
+
+The ordering is compress, then encrypt, then (in a future version) erasure-code, then
+modulate. Each step is only correct in that position:
+
+- Compressing after encrypting gains nothing; ciphertext is incompressible.
+- Encrypting after erasure coding destroys the correction, since parity computed over
+  plaintext does not survive a cipher.
+
+## 1. Notation
+
+| Term | Meaning |
+|---|---|
+| `u8`, `u16`, `u32`, `u64` | Unsigned big-endian integers of that width |
+| `b[n]` | Exactly `n` bytes |
+| AEAD | XChaCha20-Poly1305, 24-byte nonce, 16-byte tag |
+| KDF | HKDF-SHA-512 |
+
+## 2. Inner payload (`NCPL`)
+
+Produced before encryption, consumed after decryption. Never visible in a sealed
+container.
+
+| Offset | Size | Field |
+|---|---|---|
+| 0 | `b[4]` | Magic, ASCII `NCPL` |
+| 4 | `u8` | Version, `1` |
+| 5 | `u8` | Compression: `0` none, `1` gzip |
+| 6 | `u16` | Name length `L`, at most 1024 |
+| 8 | `b[L]` | File name, UTF-8 |
+| 8+L | `u64` | Modification time, seconds since the Unix epoch, UTC |
+| 16+L | `u64` | Original size, before compression |
+| 24+L | `u64` | Body length `B` |
+| 32+L | `b[B]` | Body, compressed if the compression byte says so |
+
+Rules a conforming implementation must follow:
+
+- **The stored name is a base name.** Any directory component is stripped on write
+  *and* re-stripped on read. A member called `../../.ssh/authorized_keys` is a working
+  exploit against any extractor that trusts what it is given.
+- **Compression is kept only if it wins.** If the gzip body is not smaller than the
+  input, store the input and set the compression byte to `0`. Already-compressed
+  input grows under gzip, and on this channel wasted bytes are wasted minutes.
+- **Decompression is bounded by the declared original size.** Reading an unbounded
+  gzip stream is a decompression bomb.
+- **The recovered length must equal the declared original size.** A mismatch is an
+  error, not a warning.
+
+## 3. Encrypted stream (`NCR1`)
+
+```
+  [ header ]  [ chunk 0 ]  [ chunk 1 ]  …  [ chunk n, final ]
+```
+
+### 3.1 Common header prefix
+
+| Offset | Size | Field |
+|---|---|---|
+| 0 | `b[4]` | Magic, ASCII `NCR1` |
+| 4 | `u8` | Format version, `1` |
+| 5 | `u8` | Mode: `1` passphrase, `2` hybrid |
+| 6 | `u8` | Suite: `1` XChaCha20-Poly1305 with HKDF-SHA-512 |
+| 7 | `u8` | Reserved flags, must be `0` |
+| 8 | `u32` | Chunk size, plaintext bytes per chunk |
+| 12 | `b[19]` | Nonce prefix, random per container |
+
+The common prefix is 31 bytes.
+
+A reader must reject a version, mode or suite it does not implement rather than
+guessing. A reader must reject a chunk size outside `[1024, 16777216]`.
+
+### 3.2 Passphrase mode, total header 56 bytes
+
+| Offset | Size | Field |
+|---|---|---|
+| 31 | `b[16]` | Argon2id salt |
+| 47 | `u32` | Argon2id passes |
+| 51 | `u32` | Argon2id memory, KiB |
+| 55 | `u8` | Argon2id lanes |
+
+```
+master = Argon2id(passphrase, salt, passes, memory, lanes, 32)
+```
+
+**A reader must bound the cost parameters before using them.** They arrive from the
+container, so they are attacker controlled, and they are read before any
+authentication has happened; there is no way to verify them first, because verifying
+requires the key they produce. This implementation refuses more than 2 GiB of memory
+or more than 16 passes.
+
+This is a denial-of-service bound, not a security bound. It was not theoretical: a
+single flipped bit in the pass count asked for sixteen million passes and turned a
+half-second test suite into a three-minute one.
+
+Defaults when writing: 3 passes, 128 MiB, 4 lanes.
+
+### 3.3 Hybrid mode, total header 1183 bytes
+
+| Offset | Size | Field |
+|---|---|---|
+| 31 | `b[32]` | Recipient fingerprint, SHA-256 of the public identity |
+| 63 | `b[32]` | Ephemeral X25519 public key |
+| 95 | `b[1088]` | ML-KEM-768 ciphertext |
+
+A public identity is `X25519 public key ‖ ML-KEM-768 encapsulation key`, 32 + 1184 =
+1216 bytes, rendered as `noisecrypt-public-v1:` followed by unpadded base64url.
+
+A private identity is `X25519 scalar ‖ ML-KEM-768 seed`, 32 + 64 = 96 bytes, rendered
+with the `noisecrypt-secret-v1:` prefix. The public half is always **recomputed** from
+the secret on load, never read from the stored blob, so a tampered key file cannot
+make a receiver advertise a public key that does not match its secret.
+
+```
+transcript = SHA-512( "noisecrypt/v1 hybrid transcript"
+                    ‖ recipient_public_identity
+                    ‖ ephemeral_x25519_public
+                    ‖ mlkem_ciphertext )
+
+master = HKDF-SHA-512( ikm  = x25519_shared ‖ mlkem_shared,
+                       salt = transcript,
+                       info = "noisecrypt/v1 hybrid master",
+                       len  = 32 )
+```
+
+Both shared secrets go into the input keying material. HKDF-Extract over the pair is a
+secure PRF as long as either half is unpredictable, which is precisely the hybrid
+property: breaking X25519 alone, or ML-KEM alone, does not reveal the key.
+
+The transcript in the salt binds the recipient identity, the ephemeral key and the
+ciphertext, so an attacker who can rewrite header bytes cannot steer two parties onto
+different keys.
+
+The fingerprint is a routing hint, not a security check. It lets a receiver holding
+several identities pick one without trial decapsulation, at the cost of telling an
+observer which identity a container is addressed to. Forging it does not help an
+attacker: ML-KEM decapsulation of a ciphertext meant for someone else returns a
+deterministic pseudo-random key rather than an error, so the failure surfaces at the
+AEAD, which is exactly where it should.
+
+### 3.4 Stream key
+
+```
+header_hash = SHA-256(encoded header)
+stream_key  = HKDF-SHA-512( ikm  = master,
+                            salt = header_hash,
+                            info = "noisecrypt/v1 stream key",
+                            len  = 32 )
+```
+
+Deriving from the header hash is what makes header tampering fatal. Flip a bit in the
+chunk size, the mode byte or the KEM ciphertext and the derived key changes, so every
+chunk fails to authenticate instead of being decrypted under parameters an attacker
+chose.
+
+### 3.5 Chunks
+
+Each chunk is:
+
+| Size | Field |
+|---|---|
+| `u32` | Sealed length, plaintext length plus 16 |
+| `b[len]` | AEAD output |
+
+For chunk index `i`, with `final` true only for the last chunk:
+
+```
+nonce = nonce_prefix(19) ‖ u32(i) ‖ (final ? 0x01 : 0x00)      // 24 bytes
+ad    = header_hash(32)  ‖ u32(i) ‖ (final ? 0x01 : 0x00)      // 37 bytes
+```
+
+The index and the final flag appear in both the nonce and the associated data. That is
+redundant on purpose: an implementation that ignored the associated data entirely
+would still get reordering and truncation resistance from the nonce alone.
+
+Properties this yields, and the attack each one closes:
+
+| Property | Attack closed |
+|---|---|
+| Index in the nonce | Reordering or dropping a chunk from the middle |
+| Final flag in the nonce | Truncating the stream, whose remaining chunks are individually valid |
+| Header hash in the associated data | Swapping the header for another |
+| Random nonce prefix per container | Nonce reuse across two containers under the same passphrase |
+
+An empty plaintext still produces exactly one chunk, the final one. Without it there
+would be no end-of-stream marker and a reader could not distinguish an empty message
+from a message truncated to nothing.
+
+Bytes after the final chunk are an error. A reader must not ignore them.
+
+### 3.6 Reader obligations
+
+A conforming reader must:
+
+1. Reject an unknown version, mode or suite instead of guessing.
+2. Reject a non-zero reserved flags byte.
+3. Bound the chunk size, the Argon2id memory and the Argon2id pass count before
+   allocating or computing anything from them.
+4. Reject a declared chunk length that exceeds the header's chunk size plus 16, or
+   that exceeds the bytes actually present.
+5. Report wrong passphrase, wrong recipient, and tampered ciphertext as the same
+   failure, so a caller cannot use the distinction as an oracle.
+6. Reject any data following the end-of-stream chunk.
+7. Sanitise the stored file name on read, not only on write.
+
+Items 3, 4 and 7 are the ones an implementation written from this document alone is
+most likely to skip, because each looks like defensive paperwork until it is the bug.
+
+## 4. Test vectors
+
+Not yet published. They will be added with the first tagged release, alongside a
+`testdata` directory of sealed containers that must open with a fixed passphrase and a
+fixed identity, so that a future refactor cannot silently change the format.

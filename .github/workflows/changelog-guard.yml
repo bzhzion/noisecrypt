@@ -1,0 +1,99 @@
+name: Changelog guard
+
+# Counterpart of the .githooks/pre-commit reminder: that hook is bypassable
+# (git commit --no-verify), this one runs at tag time, where it cannot be skipped.
+#
+# Two checks deliberately independent of the changelog indexing format: some repos
+# index by version (## [1.3.19] - date) and some by date (## [2026-08-30] - message).
+# This repo indexes by version from its first tag.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  guard:
+    name: Changelog up to date at tag
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history is required to compare against the previous tag
+
+      - name: Check the changelog
+        run: |
+          set -euo pipefail
+
+          CHANGELOG="CHANGELOG.md"
+          if [ ! -f "$CHANGELOG" ]; then
+            echo "::error::$CHANGELOG is missing (exactly this casing)."
+            exit 1
+          fi
+
+          # Triggering tag, or the latest tag when run manually.
+          if [ "${GITHUB_REF_TYPE:-}" = "tag" ]; then
+            TAG="$GITHUB_REF_NAME"
+          else
+            TAG=$(git describe --tags --abbrev=0 --match 'v[0-9]*' 2>/dev/null || echo "")
+            if [ -z "$TAG" ]; then
+              echo "No version tag in this repo, nothing to check."
+              exit 0
+            fi
+            echo "Manual run: checking against the latest tag ($TAG)."
+          fi
+          VERSION="${TAG#v}"
+          echo "Tag under check: $TAG (version $VERSION)"
+
+          FAIL=0
+
+          # --- 1. The [Unreleased] section must have been promoted ---------------
+          # At tag time its accumulated content becomes a version section. Leaving it
+          # full means publishing a release whose journal still sits under "unreleased".
+          UNRELEASED=$(awk '/^## \[Unreleased\]/{f=1;next} /^## /{f=0} f' "$CHANGELOG" \
+                       | grep -vE '^[[:space:]]*$' | grep -vE '^###' || true)
+          if [ -n "$UNRELEASED" ]; then
+            echo "::error::The [Unreleased] section is not empty although $TAG was just pushed."
+            echo "Rename it to a version number, then leave an empty [Unreleased] above it."
+            echo "Content still present:"
+            echo "$UNRELEASED" | sed 's/^/    /'
+            FAIL=1
+          else
+            echo "OK: [Unreleased] is empty."
+          fi
+
+          # --- 2. Changed code implies a changed changelog -----------------------
+          # This is the check the hook cannot guarantee: --no-verify skips it commit by
+          # commit, but the drift shows up here. Same filter as the hook: CI, docs,
+          # root .md files and hooks do not count as code.
+          PREV=$(git describe --tags --abbrev=0 --match 'v[0-9]*' "$TAG^" 2>/dev/null || echo "")
+          if [ -z "$PREV" ]; then
+            echo "No earlier tag: diff check skipped (first tag of the repo)."
+          else
+            CODE=$(git diff --name-only "$PREV" "$TAG" \
+                   | grep -vE '^(\.github/|\.githooks/|docs/|[^/]*\.md$|\.gitignore$|LICENSE$)' || true)
+            TOUCHED=$(git diff --name-only "$PREV" "$TAG" -- "$CHANGELOG" || true)
+            if [ -n "$CODE" ] && [ -z "$TOUCHED" ]; then
+              echo "::error::Code changed between $PREV and $TAG without $CHANGELOG being touched."
+              echo "Code files involved:"
+              echo "$CODE" | sed 's/^/    /'
+              FAIL=1
+            else
+              echo "OK: code and changelog are consistent since $PREV."
+            fi
+          fi
+
+          # --- 3. The tagged version must have its own section -------------------
+          if ! grep -qF "## [$VERSION]" "$CHANGELOG"; then
+            echo "::error::No '## [$VERSION]' section in $CHANGELOG for tag $TAG."
+            echo "Expected: a '## [$VERSION] - YYYY-MM-DD' section describing what ships."
+            FAIL=1
+          else
+            echo "OK: section [$VERSION] is present."
+          fi
+
+          exit "$FAIL"

@@ -1,0 +1,104 @@
+name: Security
+
+# Three independent scanners, because they answer different questions:
+#
+#   govulncheck  do our dependencies have known CVEs, and do we actually call the
+#                affected code? It reads the Go vulnerability database and the call
+#                graph, so it reports far fewer false positives than a manifest scan.
+#   Trivy        the manifest view, plus config and licence findings govulncheck
+#                does not cover. Redundant on purpose: a vulnerability missing from
+#                one database is the normal case, not the exception.
+#   Gitleaks     did a key, token or passphrase reach the history? For a repository
+#                whose subject is encryption, this is the failure that matters most.
+#
+# The weekly schedule is the load-bearing part. A CVE is almost never published on
+# the day of the commit that introduces the dependency; without a scheduled run, a
+# repository that stops receiving commits also stops being scanned, and silence
+# reads as safety.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: '17 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  govulncheck:
+    name: Known vulnerabilities in dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          check-latest: true
+
+      - name: Run govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
+
+  trivy:
+    name: Dependency and configuration scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Trivy, gating pass
+        # Table output with an exit code, because of a real trap: Trivy applies the
+        # severity filter to human-readable formats but NOT to SARIF output. A job
+        # built only around the SARIF step therefore reports everything to the
+        # Security tab and never fails, which looks like a passing gate while
+        # gating nothing.
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: table
+          exit-code: '1'
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH
+
+      - name: Trivy, SARIF for the Security tab
+        if: always()
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: sarif
+          output: trivy.sarif
+
+      - name: Upload SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy.sarif
+          category: trivy
+
+  gitleaks:
+    name: Secrets in the history
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Full history: a secret removed in a later commit is still a leaked
+          # secret, and scanning only the tip would declare the repository clean.
+          fetch-depth: 0
+
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ github.token }}

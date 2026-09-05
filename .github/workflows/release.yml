@@ -1,0 +1,134 @@
+name: Release
+
+# Builds and publishes one binary per platform, on a version tag only.
+#
+# Two rules from the wider convention this repository follows:
+#
+#   Nothing publishes on a branch push. A release starts from a tag vX.Y.Z, or from
+#   a deliberate manual run. Checks stay on push; publishing does not.
+#
+#   The version lives in the git tags, never in a committed file. It is resolved
+#   here with git describe and injected at link time. That is why the checkout below
+#   uses fetch-depth: 0 — without the full history no tag is visible and every
+#   binary would proudly report itself as "dev".
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { goos: linux, goarch: amd64 }
+          - { goos: linux, goarch: arm64 }
+          - { goos: darwin, goarch: amd64 }
+          - { goos: darwin, goarch: arm64 }
+          - { goos: windows, goarch: amd64, ext: .exe }
+          - { goos: windows, goarch: arm64, ext: .exe }
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          check-latest: true
+
+      - name: Resolve the version from the tag
+        id: version
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_REF_TYPE:-}" = "tag" ]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            TAG=$(git describe --tags --abbrev=0 --match 'v[0-9]*' 2>/dev/null || echo "")
+            if [ -z "$TAG" ]; then
+              echo "::error::No version tag found. Tag a release before running this manually."
+              exit 1
+            fi
+            VERSION="${TAG#v}"
+            echo "Manual run: building the latest tag ($TAG)."
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Build
+        env:
+          CGO_ENABLED: 0
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          set -euo pipefail
+          NAME="noisecrypt-${{ steps.version.outputs.version }}-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}"
+          mkdir -p dist
+          # -trimpath keeps absolute build paths out of the binary, which is both a
+          # reproducibility property and a small privacy one.
+          go build -trimpath \
+            -ldflags "-s -w -X github.com/bzhzion/noisecrypt/internal/cli.Version=${{ steps.version.outputs.version }}" \
+            -o "dist/$NAME" ./cmd/noisecrypt
+          echo "NAME=$NAME" >> "$GITHUB_ENV"
+
+      - name: Verify the version was injected
+        # Only for the host platform: the others cannot run here. Without this, a
+        # broken ldflags path ships six binaries that all report "dev", and nobody
+        # notices until someone files a bug against the wrong version.
+        if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
+        run: |
+          set -euo pipefail
+          GOT=$(./dist/$NAME version)
+          if [ "$GOT" != "${{ steps.version.outputs.version }}" ]; then
+            echo "::error::binary reports version '$GOT', expected '${{ steps.version.outputs.version }}'"
+            exit 1
+          fi
+
+      - name: Checksum
+        run: cd dist && sha256sum "$NAME" > "$NAME.sha256"
+
+      - name: Upload artefact
+        uses: actions/upload-artifact@v4
+        with:
+          name: noisecrypt-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/*
+          retention-days: 7
+
+  publish:
+    name: Publish the release
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref_type == 'tag'
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download every artefact
+        uses: actions/download-artifact@v4
+        with:
+          path: artefacts
+          merge-multiple: true
+
+      - name: Collect the checksums into one file
+        run: |
+          set -euo pipefail
+          cd artefacts
+          cat *.sha256 > SHA256SUMS
+          rm -f *.sha256
+          ls -la
+
+      - name: Publish
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artefacts/*
+          generate_release_notes: true
+          fail_on_unmatched_files: true

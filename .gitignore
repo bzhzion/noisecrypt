@@ -1,0 +1,27 @@
+# Build output
+/noisecrypt
+/noisecrypt.exe
+/dist/
+/build/
+
+# Test and scratch artefacts
+*.mp4
+*.ncry
+*.test
+/testdata/tmp/
+coverage.out
+
+# Editors and OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Never commit key material
+*.key
+*.pem
+*.p8
+*.p12
+.env
+.env.*
+!.env.example

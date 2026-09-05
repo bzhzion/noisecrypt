@@ -1,0 +1,56 @@
+name: CodeQL
+
+# Static analysis of our own code, as opposed to security.yml which looks at
+# dependencies and history. The two do not overlap: a hand-rolled nonce reuse or a
+# missing bounds check lives in code nobody else has a CVE for.
+#
+# security-extended is on because the default query pack is tuned to keep noise low
+# on large codebases, and this one is small enough to absorb the extra findings.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '41 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  analyse:
+    name: Analyse Go
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          check-latest: true
+
+      - name: Initialise CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: go
+          queries: security-extended
+
+      - name: Build
+        # CodeQL needs to observe a real build to resolve the call graph. An
+        # autobuild would work here, but an explicit build keeps the analysed
+        # artefact identical to the one CI tests.
+        run: go build ./...
+
+      - name: Analyse
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: /language:go

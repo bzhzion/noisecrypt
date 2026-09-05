@@ -1,0 +1,79 @@
+#!/bin/sh
+# Replays locally, before anything reaches GitHub, the same checks as
+# .github/workflows/changelog-guard.yml on a version tag (refs/tags/v*.*.*).
+# Goal: stop discovering the failure only afterwards in CI, with the tag already
+# pushed, which forces a fix then a tag move (git tag -f + push --force) and the
+# cancellation of duplicate runs. This deliberately duplicates the logic of
+# changelog-guard.yml rather than editing it: that CI file is copied verbatim from
+# a shared source of truth, and changing it here would desynchronise it.
+#
+# A reminder, like pre-commit: `git push --no-verify` skips it.
+
+CHANGELOG="CHANGELOG.md"
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  case "$local_ref" in
+    refs/tags/v*) ;;
+    *) continue ;;
+  esac
+
+  TAG="${local_ref#refs/tags/}"
+  VERSION="${TAG#v}"
+  echo ""
+  echo "  pre-push: checking the changelog for tag $TAG..."
+
+  if [ ! -f "$CHANGELOG" ]; then
+    echo "  BLOCKED: $CHANGELOG is missing."
+    exit 1
+  fi
+
+  FAIL=0
+
+  UNRELEASED=$(awk '/^## \[Unreleased\]/{f=1;next} /^## /{f=0} f' "$CHANGELOG" \
+               | grep -vE '^[[:space:]]*$' | grep -vE '^###' || true)
+  if [ -n "$UNRELEASED" ]; then
+    echo "  BLOCKED: the [Unreleased] section is not empty for tag $TAG."
+    echo "  Rename it to '## [$VERSION] - $(date +%Y-%m-%d)' before pushing this tag."
+    echo "  Content still present:"
+    echo "$UNRELEASED" | sed 's/^/      /'
+    FAIL=1
+  else
+    echo "  OK: [Unreleased] is empty."
+  fi
+
+  PREV=$(git describe --tags --abbrev=0 --match 'v[0-9]*' "${TAG}^" 2>/dev/null || echo "")
+  if [ -z "$PREV" ]; then
+    echo "  OK: no earlier tag, diff check skipped."
+  else
+    CODE=$(git diff --name-only "$PREV" "$TAG" \
+           | grep -vE '^(\.github/|\.githooks/|docs/|[^/]*\.md$|\.gitignore$|LICENSE$)' || true)
+    TOUCHED=$(git diff --name-only "$PREV" "$TAG" -- "$CHANGELOG" || true)
+    if [ -n "$CODE" ] && [ -z "$TOUCHED" ]; then
+      echo "  BLOCKED: code changed between $PREV and $TAG without $CHANGELOG being touched."
+      echo "  Files involved:"
+      echo "$CODE" | sed 's/^/      /'
+      FAIL=1
+    else
+      echo "  OK: code and changelog are consistent since $PREV."
+    fi
+  fi
+
+  if ! grep -qF "## [$VERSION]" "$CHANGELOG"; then
+    echo "  BLOCKED: no '## [$VERSION]' section in $CHANGELOG for tag $TAG."
+    echo "  Expected: a '## [$VERSION] - YYYY-MM-DD' section describing what ships."
+    FAIL=1
+  else
+    echo "  OK: section [$VERSION] is present."
+  fi
+
+  if [ "$FAIL" = "1" ]; then
+    echo ""
+    echo "  This tag would fail changelog-guard.yml in CI. Fix it, then:"
+    echo "      git tag -f $TAG && git push origin $TAG"
+    echo "  (or, deliberately: git push --no-verify)"
+    echo ""
+    exit 1
+  fi
+done
+
+exit 0
