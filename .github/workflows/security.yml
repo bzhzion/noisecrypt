@@ -8,6 +8,15 @@ name: Security
 #   Trivy        the manifest view, plus config and licence findings govulncheck
 #                does not cover. Redundant on purpose: a vulnerability missing from
 #                one database is the normal case, not the exception.
+#
+#                The two disagree, and the disagreement is informative rather than
+#                noise. The first run here was green on govulncheck and red on Trivy,
+#                over CVEs in golang.org/x/crypto/ssh, a package this project does not
+#                import: Trivy reasons at module granularity, govulncheck at call
+#                graph granularity. Do not "fix" that by dropping Trivy. Module-level
+#                findings are still real work, because the fix is to raise the
+#                dependency, and a project that only ever listens to the call graph
+#                drifts years behind on modules it half uses.
 #   Gitleaks     did a key, token or passphrase reach the history? For a repository
 #                whose subject is encryption, this is the failure that matters most.
 #

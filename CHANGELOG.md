@@ -48,6 +48,13 @@ patched by CI at tag time and are never committed with a real version number.
 - `docs/FORMAT.md`, a normative specification of the container format, including the
   obligations a reader must meet to be safe.
 
+### Changed
+
+- `golang.org/x/crypto` raised from v0.42.0 to v0.56.0, clearing four CVEs Trivy
+  reported against `golang.org/x/crypto/ssh`. That package is not imported here, and
+  govulncheck was green throughout, which is the expected disagreement between a
+  call-graph scanner and a manifest scanner rather than a false alarm to suppress.
+
 ### Fixed
 
 - Argon2id pass count is now bounded on parse. The memory ceiling alone did not close
