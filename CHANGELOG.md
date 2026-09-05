@@ -110,6 +110,18 @@ patched by CI at tag time and are never committed with a real version number.
   demanded eighty percent detection and was simply wrong about what soft decisions
   can do.
 
+### Documentation
+
+- README rewritten for someone who has never heard of carrying data in video: what it
+  does, why anyone would want it, and how the codec works explained through the picture
+  it actually draws rather than through its internals. Leads with the YouTube result,
+  keeps every honest limit (not steganography, no sender authentication, losing the key
+  loses the data, using a platform as storage likely breaks its terms), and drops the
+  comparisons to other tools, which said more about them than about this one.
+- Fixed a contradiction the rewrite exposed: the profile section still claimed neither
+  profile had been measured, four sections below the summary announcing that `social` had
+  been verified against every YouTube rendition.
+
 ### Security
 
 Findings from the first full audit (2026-09-05). Semgrep over 82 rules reported four

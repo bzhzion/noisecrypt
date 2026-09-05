@@ -1,286 +1,357 @@
 # NoiseCrypt
 
-Encrypt a file into a container designed to survive a hostile channel, then carry it
-as video.
+**Turn any file into a video. Send the video anywhere. Get the file back, byte for byte.**
 
-Any file goes in: text, Markdown, JSON, PDF, archives, binaries. The format is byte
-oriented and knows nothing about what it carries.
+Your file goes in. What comes out is a clip of flickering grey static, unwatchable and
+meaningless to look at. Upload it, download it, and NoiseCrypt hands you the original
+file back, identical to the last bit. It is encrypted the whole way, and it is built to
+survive being crushed by whatever the video travelled through.
 
-> **Status.** The pipeline works end to end and has been through a real platform. A
-> 160 KiB payload was uploaded to YouTube as a 45 second Short and recovered byte for
-> byte from **every rendition YouTube produced**, from 1080x1920 down to 144x256, in
-> H.264, VP9 and AV1. See [Measured on YouTube](#measured-on-youtube).
+> We uploaded a 160 KiB file to YouTube as a 45 second Short. YouTube re-encoded it into
+> nine different versions, shrinking one of them from 1080 pixels wide down to 144 and
+> compressing it to a twentieth of its original bitrate.
+>
+> **All nine gave the file back perfectly.** [See the numbers.](#the-proof)
 
-## Why
+---
 
-Encryption tools that hide data in video already exist. The ones the author looked at
-share three problems, and this project is a reaction to all three.
+## Why would anyone do this
 
-**They are not encryption.** They encode, and their documentation tells you to encrypt
-the file yourself beforehand. That is honest, and it is also a trap: eventually
-somebody puts something sensitive in a public video because the tool never stopped
-them. NoiseCrypt encrypts by default and has no mode that does not.
+Because video goes places files cannot.
 
-**Their tests prove nothing.** A CI job running `go test ./...` against a repository
-containing zero test files goes green forever. That is worse than having no CI at all,
-because it manufactures confidence with nothing underneath it.
+Plenty of channels will happily accept a video and refuse everything else. A messaging
+app that strips attachments. A platform with no file hosting. A workflow where the only
+thing that reliably survives is a clip. Video is the universal envelope of the modern
+internet, and NoiseCrypt is a way to put something inside it.
 
-**Their tuning constants cannot be checked.** A magic cell size chosen because it
-happened to work once is indistinguishable from a guess, and nobody downstream can
-verify it. Every channel parameter here is marked as measured or not measured, and
-`noisecrypt simulate` will exist to move numbers from the second category to the first.
+There is also a longevity argument. An `.mp4` is one of the most boringly well supported
+formats ever made. Software that can play a video will still exist long after the
+proprietary archive format you were counting on has stopped shipping a reader.
 
-## Security design
+And sometimes the honest answer is curiosity. Squeezing data through a channel designed
+for something else is a satisfying engineering problem, and this one has a clean way to
+tell whether you have solved it: either the file comes back identical or it does not.
 
-The full rationale lives in the package documentation of `internal/crypt`. The short
-version:
+**One thing to be clear about.** Using someone's video platform as free file storage
+almost certainly breaks their terms of service. NoiseCrypt does not care what you point
+it at, but you should read the rules of wherever you are uploading.
 
-**Post-quantum, not "quantum".** The realistic threat is an adversary recording
-ciphertext today and decrypting it years from now. Symmetric cryptography is already
-fine against that: Grover's algorithm costs a square root, so a 256-bit key still
-leaves a 128-bit margin. Key exchange is not fine, because Shor's algorithm breaks
-X25519 outright.
+---
 
-**Hybrid, never lattice alone.** Recipient mode runs X25519 and ML-KEM-768 (FIPS 203)
-together and feeds both shared secrets into one HKDF transcript. The result holds as
-long as *either* primitive holds. ML-KEM is young and its security estimates still
-move; X25519 has a known quantum break. Choosing one alone means betting on a fresh
-lattice assumption or betting that quantum computers never arrive.
+## See it work
 
-**Chunked authentication, not one tag over the whole file.** A single AEAD tag over a
-whole archive means one damaged byte destroys everything, which defeats the erasure
-coding that makes this format work in the first place. NoiseCrypt uses the STREAM
-construction: each chunk is sealed separately with its index and an end-of-stream flag
-bound into the nonce and the associated data. Chunks cannot be reordered, dropped from
-the end, or spliced in from another message.
-
-## Measured on YouTube
-
-One 45 second Short, 160 KiB of incompressible payload, uploaded unlisted on
-2026-09-05. Every rendition YouTube produced was downloaded with `yt-dlp` and decoded.
-
-| Rendition | Codec | Scale | Cell after scaling | Unreadable frames | Payload |
-|---|---|---|---|---|---|
-| 1080x1920 | H.264 1776k | 1:1 | 30 px | 3 / 1344 | intact |
-| 1080x1920 | VP9 498k | 1:1 | 30 px | 3 / 1344 | intact |
-| 1080x1920 | AV1 427k | 1:1 | 30 px | 3 / 1344 | intact |
-| 720x1280 | H.264, VP9 | 0.67 | 20 px | 3 / 1344 | intact |
-| 608x1080 | AV1 | 0.56 | 16.9 px | 3 / 1344 | intact |
-| 480x854 | H.264 | 0.44 | 13.3 px | 3 / 1344 | intact |
-| 360x640 | H.264 | 0.33 | 10 px | 3 / 1344 | intact |
-| 240x426 | H.264 | 0.22 | 6.7 px | 5 / 1344 | intact |
-| 144x256 | H.264 199k | 0.13 | 4 px | 3 / 1344 | intact |
-
-Two things matter more than the verdict.
-
-**YouTube cost nothing.** The three unreadable frames are the same three that failed
-in the local decode before the upload. They come from this codec's own registration,
-not from the platform.
-
-**The profile is heavily overbuilt.** It was designed to survive a scaling factor of
-8/15 and it survived 1/7.5, with cells reduced to four pixels and AV1 at a twentieth
-of the source bitrate. The 114 percent overhead buys far more margin than the channel
-demands, so a much denser social profile is possible. That is a change to make on
-measurements, not on one upload.
-
-**What this does not prove.** One video, one platform, one day. It says nothing about
-TikTok, about longer videos where frame rate conversion behaves differently, or about
-what YouTube's pipeline will do next year. `archive` remains unverified against any
-platform, which is correct: its channel is one that does not re-encode.
-
-## Codec design
-
-Two decisions carry the codec, and both were measured rather than assumed.
-
-**Soft demodulation.** Reading a cell back as `grey < 128 ? 0 : 1` throws away the most
-useful thing the channel offers: a cell measured at 130 and one measured at 250 both
-become "one", though the first is a coin flip. This codec keeps a confidence per cell
-and uses it to choose which pieces to erase, which matters because Reed-Solomon
-corrects twice as many erasures as errors. Measured at a 1.75 percent raw byte error
-rate: 30 of 32 frames repaired with confidence, 3 without it.
-
-Confidence ranks corruption; it does not detect it. A cell pushed well past a decision
-boundary lands near the neighbouring level and reports high confidence while being
-wrong. It beats chance by about three and a half times, which is a good way to
-prioritise erasures and a useless way to certify a result, so every reconstruction is
-validated by a CRC instead.
-
-**Two coding layers, because a video channel breaks data two different ways.** Inside a
-frame, blur and quantisation flip scattered cells; across frames, rate conversion drops
-whole frames. A frame-level code alone recovers nothing when every frame has one bad
-cell, and a cell-level code alone cannot see a missing frame at all.
-
-The intra-frame granularity is finer than it looks like it should be, and that was the
-single biggest correction during development. An early version used eighteen sub-shards
-of twelve bytes and collapsed completely at four percent byte errors: scattered damage
-touches nearly every large shard. One shard per byte, up to the 256-symbol ceiling of
-GF(256), leaves the payload size identical and improves the tolerance by an order of
-magnitude.
-
-**Metadata is confidential.** The file name, its size and its modification time live
-inside the ciphertext. The cleartext header says how to decrypt, never what was
-encrypted. There is a test that fails if the file name appears anywhere in the sealed
-bytes.
-
-### What this does not do
-
-This is **not steganography and offers no deniability**. A video of visual noise is
-the least discreet object you can upload. Encryption protects the content, not the
-fact that content exists. Anyone looking at the file knows immediately that something
-is hidden in it, and in some situations that alone is the risk that matters.
-
-It also does not authenticate the sender. A container sealed to your identity proves
-someone knew your public key, not who. Signatures are on the roadmap.
-
-## Install
-
-Download a binary for your platform from the
-[releases page](https://github.com/bzhzion/noisecrypt/releases), or build from source:
+Install [FFmpeg](https://ffmpeg.org/) and grab a binary from the
+[releases page](https://github.com/bzhzion/noisecrypt/releases). Then:
 
 ```sh
-git clone https://github.com/bzhzion/noisecrypt
-cd noisecrypt
-make hooks   # git never transports hook configuration; run this after every clone
-make build
+# Turn a file into a video. You will be asked for a passphrase.
+noisecrypt encode -in holiday-photos.zip -out holiday.mp4
+
+# ...move holiday.mp4 wherever you like...
+
+# Turn the video back into the file.
+noisecrypt decode -in holiday.mp4 -out holiday-photos.zip
 ```
 
-Requires Go 1.25 or later. There is no CGO, so cross-compiling to any of the six
-supported targets is a single `GOOS=… GOARCH=… go build`.
+That is the whole tool in two commands. Everything else is control over how it behaves.
 
-## Usage
-
-Everything is reachable from flags. There is no interactive-only mode, deliberately:
-a tool you cannot script is a tool you cannot put in a backup job, a pipeline, or a
-test.
-
-### Carry a file as video
+Curious what it will cost before you commit? Ask first:
 
 ```sh
-noisecrypt encode -in report.pdf -out report.mp4 -profile archive
-noisecrypt decode -in report.mp4 -out report.pdf -profile archive
+noisecrypt estimate -in holiday-photos.zip
 ```
 
-Encoding encrypts first; there is no mode that does not. `-profile` has to match on
-both sides, and `decode` says so when the video it was given is not the size the
-profile produces.
+It tells you how many frames and how many minutes of video your file becomes, per
+profile, before spending a second of encoding.
 
-Requires FFmpeg on the PATH, or in one of the usual installed locations. One of those
-is a glob, because `winget install Gyan.FFmpeg` reports success, adds nothing to PATH,
-creates no shim, and leaves the binary in a directory named after the FFmpeg version.
+---
 
-### Measure a profile instead of trusting it
+## How it works, in plain terms
+
+### Step one: the file becomes a picture
+
+Imagine a chessboard. Each square is either black or white, and each square carries one
+bit of your data. Fill the board, and you have a frame. Fill fourteen hundred boards and
+play them at thirty per second, and you have a video.
+
+That is genuinely it. The "static" you see is your file, drawn as squares.
+
+### Step two: the squares have to survive being flattened
+
+Here is the hard part. A video platform does not store what you gave it. It shrinks it,
+blurs it, throws away detail to save bandwidth, and re-compresses it two or three times
+on the way to a viewer's screen. Small squares blur into their neighbours and the bits
+turn to mush.
+
+So the squares are made deliberately large, and their size is chosen to match how
+platforms shrink video. NoiseCrypt draws them at 30 pixels, because a platform that
+scales a 1080 pixel wide video down to 576 is dividing by 15 and multiplying by 8, and
+30 survives that arithmetic as exactly 16 pixels. No fractional pixels, no bleeding
+edges. Pick the wrong size and every square smears into the next one.
+
+### Step three: redundancy, so damage does not matter
+
+Some squares will still be read wrong. Some entire frames will vanish, because platforms
+change frame rates and drop frames to do it.
+
+NoiseCrypt therefore spreads your file across the video with mathematical redundancy,
+the same family of technique that lets a scratched CD play or a QR code work with a
+corner torn off. There are two layers of it, because a video breaks data in two
+unrelated ways: scattered wrong squares inside a frame, and whole frames going missing.
+One layer repairs each.
+
+The result is that a decoder does not need a perfect video. It needs enough of one.
+
+### Step four: it was encrypted before any of that happened
+
+Before your file is ever drawn as squares, it is compressed and encrypted. Not as an
+option you can forget to switch on: there is no mode that skips it.
+
+The file name, its size and the date you last touched it are encrypted too. The video
+reveals that *something* is inside, never *what*.
+
+---
+
+## The proof
+
+Talk is cheap on this kind of claim, so here is a real round trip.
+
+A 160 KiB file of pure random bytes, chosen because random data cannot be compressed and
+is therefore the hardest case. Encoded into a 45 second vertical video, uploaded to
+YouTube as an unlisted Short, then every single version YouTube generated was downloaded
+and decoded.
+
+| What YouTube served | Codec | Shrunk to | Squares became | Result |
+|---|---|---|---|---|
+| 1080x1920 | H.264 | full size | 30 px | ✅ perfect |
+| 1080x1920 | VP9 | full size | 30 px | ✅ perfect |
+| 1080x1920 | AV1 | full size | 30 px | ✅ perfect |
+| 720x1280 | H.264, VP9 | 67 % | 20 px | ✅ perfect |
+| 608x1080 | AV1 | 56 % | 16.9 px | ✅ perfect |
+| 480x854 | H.264 | 44 % | 13.3 px | ✅ perfect |
+| 360x640 | H.264 | 33 % | 10 px | ✅ perfect |
+| 240x426 | H.264 | 22 % | 6.7 px | ✅ perfect |
+| 144x256 | H.264 | 13 % | 4 px | ✅ perfect |
+
+"Perfect" means the recovered file had the same SHA-256 hash as the original. Not
+similar. Identical.
+
+The most extreme row is worth sitting with. At 144x256, each of those carefully sized
+30 pixel squares had been crushed to about 4 pixels, and the whole clip was down to
+199 kbit/s. It still worked.
+
+**What this does not prove.** One file, one platform, one day. It says nothing about
+other platforms, about hour-long videos where frame rates get converted differently, or
+about what YouTube's pipeline will do next year. Anyone who tells you a single successful
+test is a guarantee is selling something.
+
+---
+
+## The encryption
+
+If you only remember one line: **NoiseCrypt is built for the person who assumes their
+encrypted data will be recorded today and attacked in twenty years.**
+
+### Why that matters
+
+Today's key exchange has a known expiry date. A sufficiently large quantum computer
+breaks the mathematics behind most of the encrypted traffic on the internet, and
+"harvest now, decrypt later" is a real strategy: store the ciphertext, wait for the
+machine. For anything you want secret for a decade, that is the threat that counts.
+
+### What NoiseCrypt does about it
+
+**Two locks, not one.** When you encrypt to someone's public key, NoiseCrypt performs
+*two* independent key exchanges at once, X25519 and ML-KEM-768 (the post-quantum standard
+published by NIST), and blends both results into the final key.
+
+Break one and you get nothing. You need both.
+
+That belt-and-braces design is deliberate. X25519 is decades old and thoroughly studied,
+and a quantum computer defeats it. ML-KEM resists quantum attack, and it is young enough
+that the security community is still refining its estimates. Betting everything on either
+one is a bet. Requiring both is not.
+
+**Passphrase mode needs no such trick.** If you encrypt with a passphrase, the maths
+involved is already quantum resistant. NoiseCrypt stretches your passphrase with
+Argon2id, which deliberately burns memory and time so that guessing at scale becomes
+expensive.
+
+It also refuses to encrypt with a passphrase shorter than 8 bytes, and the reason is
+worth understanding: making each guess expensive only helps if there are many guesses to
+make. No amount of stretching saves a passphrase of "a". Decryption never enforces the
+limit, so a container made elsewhere always opens.
+
+**Damage does not become total loss.** Your file is encrypted in chunks rather than as
+one indivisible block. A single damaged region does not render everything unreadable,
+which is exactly what makes the redundancy above worth having. The chunks are still tied
+together cryptographically, so nobody can reorder them, cut the end off, or splice in
+pieces from a different file without the decryption failing loudly.
+
+### What NoiseCrypt is not
+
+**It is not hiding.** A video of grey static is the single most conspicuous thing you can
+upload. Anyone who looks at it knows immediately that something is concealed inside.
+NoiseCrypt protects *what* your data is, never *that it exists*. If being noticed is
+itself your risk, this is the wrong tool and no amount of encryption changes that.
+
+**It does not prove who sent it.** A container encrypted to your key proves that someone
+knew your public key. It does not prove who. Digital signatures are on the roadmap.
+
+---
+
+## Everything you can do with it
+
+Every feature is a flag, and nothing hides behind an interactive menu. That is on
+purpose: a tool you cannot script is a tool you cannot put in a nightly backup job.
+
+### Encrypt with a passphrase
 
 ```sh
-noisecrypt simulate -profile social
+noisecrypt encode -in report.pdf -out report.mp4
+noisecrypt decode -in report.mp4 -out report.pdf
 ```
 
-Encodes a payload, re-encodes the result at a range of qualities, and reports which
-ones still decode. On the machine this was developed on: `social` decoded at every
-quality down to CRF 42, `archive` decoded at CRF 23 and failed at 28.
+You will be prompted, and what you type is not shown. There is no `-passphrase` flag,
+deliberately: anything typed on a command line lands in your shell history and is visible
+to every other user on the machine through the process list. For automation, choose a
+source that does not leak:
 
-These are local re-encodes, not a platform, and a platform also rescales, changes the
-frame rate and crops. Treat the numbers as a lower bound on the damage, which is
-exactly what the command prints under them.
+```sh
+noisecrypt encode -in report.pdf -passphrase-file secret.txt
+echo "$PASS" | noisecrypt encode -in report.pdf -passphrase-file -
+noisecrypt encode -in report.pdf -passphrase-env NOISECRYPT_PASS
+```
 
-### Seal without the video step
+### Encrypt for a specific person
+
+```sh
+# Once, on the recipient's machine. Keep the key file, share the printed public identity.
+noisecrypt keygen -out alice.key
+
+# Anyone can now encrypt for Alice, with nothing secret shared in advance.
+noisecrypt encode -in report.pdf -to 'noisecrypt-public-v1:...'
+
+# Only Alice can open it.
+noisecrypt decode -in report.pdf.mp4 -identity alice.key
+```
+
+`-to` and `-identity` take either the token itself or a path to a file containing one, so
+you never have to remember which form you are holding.
+
+> **Keep that key file safe and backed up.** There is no recovery, no reset and no back
+> door. Lose `alice.key` and everything encrypted to it is gone permanently. That is the
+> point of the design, and it is also a real way to lose your data.
+
+### Skip the video
+
+Sometimes you just want the encryption. `seal` and `open` do the crypto without producing
+a video, writing a compact `.ncry` file instead:
 
 ```sh
 noisecrypt seal -in report.pdf
 noisecrypt open -in report.pdf.ncry
 ```
 
-The passphrase is read from the terminal without echo. There is no `--passphrase`
-flag on purpose: a passphrase on a command line lands in your shell history and in
-the process list, where any other user on the machine can read it. For scripts:
-
-```sh
-noisecrypt seal -in report.pdf -passphrase-file secret.txt
-echo "$PASS" | noisecrypt seal -in report.pdf -passphrase-file -
-noisecrypt seal -in report.pdf -passphrase-env NOISECRYPT_PASS
-```
-
-### Seal to a recipient
-
-```sh
-noisecrypt keygen -out alice.key            # prints the public identity to share
-noisecrypt seal -in report.pdf -to 'noisecrypt-public-v1:…'
-noisecrypt open -in report.pdf.ncry -identity alice.key
-```
-
-`-to` and `-identity` accept either the token itself or a path to a file containing
-one, so you do not have to remember which you have.
-
-### Know the cost before paying it
-
-```sh
-noisecrypt estimate -in big-archive.zip
-```
-
-Reports, per channel profile, how many frames and how many minutes of video the file
-becomes. On this kind of channel the ratio between input size and video duration is
-the single most important property and the one nobody can guess. It is also why the
-answer arrives before the encode rather than after.
-
-### Channel profiles
+### Choose how tough the video needs to be
 
 ```sh
 noisecrypt profiles
 ```
 
-| Profile | For | Payload per frame | Overhead | 40 MiB becomes |
+| Profile | Use it when | Data per frame | Overhead | A 40 MiB file becomes |
 |---|---|---|---|---|
-| `archive` | Channels that do not re-encode: disk, object storage, USB, torrent | 26 108 B | 18 % | 1 610 frames, 54 s |
-| `social` | Platforms that re-encode: vertical video, heavy downscaling, deblocking | 123 B | 114 % | 341 024 frames, 3 h 09 |
+| `archive` | Nothing will re-encode the video: a hard drive, a USB stick, cloud storage, a torrent | 26 108 B | 18 % | 54 seconds |
+| `social` | A platform will chew on it: vertical video, heavy shrinking, repeated compression | 123 B | 114 % | 3 hours 9 minutes |
 
-Those figures are computed from the real error-correcting layout, not declared next
-to it. `Redundancy` is a method that reads the layout, so a tuning change cannot leave
-the advertised number behind. An earlier draft of this table claimed 40 percent
-overhead for `social`; that was an intention, and the arithmetic disagreed.
+The gap is dramatic and it is the central trade of the whole tool. Toughness is bought
+with time. `archive` assumes nobody will touch the file and packs data tightly. `social`
+assumes the worst and spends most of the frame on redundancy.
 
-The `social` cell size is 30 pixels, and that is not arbitrary. A platform scaling
-1080 down to 576 applies a factor of 8/15; a cell size that is not a multiple of 15
-lands on fractional pixel boundaries after the resize and smears every cell edge into
-its neighbour. 30 × 8/15 = 16 exactly. The rule generalises: pick a cell size
-divisible by the denominator of the platform's scaling factor.
-
-Neither profile is measured yet. `estimate` says so on every line it prints.
-
-## Development
+Pick with `-profile`, and use the same one at both ends:
 
 ```sh
-make check   # gofmt, go vet, go test -race
-make vuln    # govulncheck against the Go vulnerability database
+noisecrypt encode -in big.zip -out big.mp4 -profile social
+noisecrypt decode -in big.mp4 -out big.zip -profile social
 ```
 
-CI runs the same checks on Linux, macOS and Windows, cross-compiles all six targets,
-and runs three security scanners on every push and once a week. The weekly schedule is
-the part that matters: a CVE is almost never published on the day of the commit that
-introduces the dependency, so a repository scanned only on commit stops being scanned
-the moment it stops changing, and silence reads as safety.
+Those numbers are calculated from the actual error-correcting layout rather than written
+down beside it, so they cannot drift out of date when the code changes.
 
-Releases are cut from version tags only. Nothing publishes on a branch push.
+### Test the toughness yourself
 
-## Roadmap
+```sh
+noisecrypt simulate -profile social
+```
 
-Ordered by what unblocks the most.
+This encodes a payload, re-compresses the video at a range of qualities, and reports
+which ones still decode. It exists so that nothing here has to be taken on faith. Run it
+on your own machine and see for yourself.
 
-1. **A real platform upload.** Everything so far is measured against local
-   re-encodes, which is a lower bound. Until a video has been through an actual
-   ingest pipeline and come back, `social` is a profile designed for a channel nobody
-   has observed, and both profiles still report themselves as unverified.
-2. **Signatures.** ML-DSA-65 paired with Ed25519, same hybrid reasoning as the KEM,
-   so a container proves who sealed it and not merely that someone could.
-3. **Graphical interface**, on Linux, macOS and Windows. The command line stays the
-   reference implementation and the interface calls into the same packages; a GUI
-   that reimplements the pipeline is a second pipeline to keep correct. The framework
-   choice is open and has one hard constraint: it must not force CGO on, because
-   pure-Go builds are what make the six-target release a single matrix.
+Bear in mind it is a local test: a real platform also rescales and changes frame rates,
+so treat the results as a floor rather than a ceiling. The command prints that caveat
+itself.
+
+---
+
+## Install
+
+**Binaries.** Grab one from the [releases page](https://github.com/bzhzion/noisecrypt/releases).
+Linux, macOS and Windows, on both Intel and ARM.
+
+**FFmpeg is required** for anything involving video. NoiseCrypt looks for it on your
+`PATH` and in the usual installation directories, including the awkward versioned folder
+that `winget install Gyan.FFmpeg` leaves behind without adding anything to your `PATH`.
+
+**From source**, if you prefer:
+
+```sh
+git clone https://github.com/bzhzion/noisecrypt
+cd noisecrypt
+make hooks   # git never carries hook configuration; run this after each clone
+make build
+```
+
+Needs Go 1.26 or later. There is no C code anywhere in the project, which is why a single
+build command targets all six platforms.
+
+---
+
+## What is coming
+
+1. **A denser `social` profile.** The YouTube results showed enormous unused margin: the
+   profile was designed for a shrink factor it beat by a wide distance. Reclaiming that
+   margin turns those 3 hours per 40 MiB into something far more usable.
+2. **Digital signatures**, so a container proves who created it and not merely that
+   somebody could have. Post-quantum and classical together, on the same reasoning as the
+   key exchange.
+3. **A graphical interface** for Linux, macOS and Windows, for the times a command line is
+   the wrong answer.
+
+---
+
+## For developers
+
+```sh
+make check   # formatting, static analysis, tests with the race detector
+make vuln    # check dependencies against the Go vulnerability database
+```
+
+Continuous integration runs those on Linux, macOS and Windows, cross-compiles all six
+release targets, and runs four independent security scanners on every push **and once a
+week**. The schedule is the part that matters: vulnerabilities are rarely published on the
+day the dependency is added, so a project scanned only when it changes stops being scanned
+the moment it goes quiet, and silence is easy to mistake for safety.
+
+The container format is specified in [`docs/FORMAT.md`](docs/FORMAT.md) in enough detail to
+write an independent implementation. The reasoning behind each cryptographic choice lives
+in the package documentation of `internal/crypt`.
 
 ## Licence
 
-[BZ-1.1](LICENSE), the BREIZHZION Personal Use License. Source available, not open
-source in the OSI sense: personal use by a natural person, no fabrication or service
-provision for third parties, forks permitted for reading and study only. Commercial
-use is reserved to BREIZHZION or to a holder of a written commercial licence.
+[BZ-1.1](LICENSE), the BREIZHZION Personal Use License. Source available rather than open
+source: personal use by an individual is free, forks are permitted for reading and study,
+and commercial use or providing a service based on it is reserved to BREIZHZION or to a
+holder of a written commercial licence.
 
 Copyright © 2026 BREIZHZION.
