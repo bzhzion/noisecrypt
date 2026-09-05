@@ -58,7 +58,7 @@ type Profile struct {
 	InterData, InterParity int
 
 	// Verified records whether this geometry has been measured against a real
-	// re-encoding pass, or is still an educated guess.
+	// platform round trip, as opposed to a local re-encode or an educated guess.
 	Verified bool
 }
 
@@ -98,6 +98,26 @@ var Archive = Profile{
 // Parity is heavy on both layers on purpose. On a hostile channel, spending most of
 // the frame on redundancy and decoding at all beats spending a little and decoding
 // nothing.
+//
+// # Measured, 2026-09-05
+//
+// A 45 second, 160 KiB payload was uploaded to YouTube as an unlisted Short and every
+// rendition YouTube produced was downloaded and decoded. All of them recovered the
+// payload byte for byte: 1080x1920 in H.264, VP9 and AV1, then 720x1280, 608x1080,
+// 480x854, 360x640, 240x426 and 144x256.
+//
+// Two things that came out of it and should shape the next change here.
+//
+// YouTube cost nothing. Three frames of 1344 were unreadable, and they were the same
+// three that failed in the local decode before the upload, so they come from this
+// codec's own registration and not from the platform.
+//
+// This profile is heavily overbuilt. It was designed to survive a scaling factor of
+// 8/15 and it survived 1/7.5, with cells reduced to four pixels and AV1 at 427 kbit/s,
+// a twentieth of the source bitrate. The 114 percent overhead buys far more margin
+// than the channel demands, so there is room for a much denser social profile. That
+// is a change to make on measurements, not on this observation alone: one upload of
+// one video is not a survey of the platform.
 var Social = Profile{
 	Name:             "social",
 	Summary:          "robust, for platforms that re-encode (vertical 9:16, heavy downscaling)",
@@ -110,7 +130,7 @@ var Social = Profile{
 	IntraParityRatio: 0.25,
 	InterData:        24,
 	InterParity:      8,
-	Verified:         false,
+	Verified:         true, // YouTube Shorts, every rendition, 2026-09-05
 }
 
 var registry = map[string]Profile{

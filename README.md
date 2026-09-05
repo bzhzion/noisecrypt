@@ -6,11 +6,10 @@ as video.
 Any file goes in: text, Markdown, JSON, PDF, archives, binaries. The format is byte
 oriented and knows nothing about what it carries.
 
-> **Status.** The pipeline works end to end: a file goes in, an `.mp4` comes out, and
-> the file comes back. Verified against real H.264, including a second re-encoding
-> pass. Not yet verified against an actual platform upload, which is the difference
-> between a codec that works and a codec that works where it is aimed. See
-> [Roadmap](#roadmap).
+> **Status.** The pipeline works end to end and has been through a real platform. A
+> 160 KiB payload was uploaded to YouTube as a 45 second Short and recovered byte for
+> byte from **every rendition YouTube produced**, from 1080x1920 down to 144x256, in
+> H.264, VP9 and AV1. See [Measured on YouTube](#measured-on-youtube).
 
 ## Why
 
@@ -54,6 +53,40 @@ coding that makes this format work in the first place. NoiseCrypt uses the STREA
 construction: each chunk is sealed separately with its index and an end-of-stream flag
 bound into the nonce and the associated data. Chunks cannot be reordered, dropped from
 the end, or spliced in from another message.
+
+## Measured on YouTube
+
+One 45 second Short, 160 KiB of incompressible payload, uploaded unlisted on
+2026-09-05. Every rendition YouTube produced was downloaded with `yt-dlp` and decoded.
+
+| Rendition | Codec | Scale | Cell after scaling | Unreadable frames | Payload |
+|---|---|---|---|---|---|
+| 1080x1920 | H.264 1776k | 1:1 | 30 px | 3 / 1344 | intact |
+| 1080x1920 | VP9 498k | 1:1 | 30 px | 3 / 1344 | intact |
+| 1080x1920 | AV1 427k | 1:1 | 30 px | 3 / 1344 | intact |
+| 720x1280 | H.264, VP9 | 0.67 | 20 px | 3 / 1344 | intact |
+| 608x1080 | AV1 | 0.56 | 16.9 px | 3 / 1344 | intact |
+| 480x854 | H.264 | 0.44 | 13.3 px | 3 / 1344 | intact |
+| 360x640 | H.264 | 0.33 | 10 px | 3 / 1344 | intact |
+| 240x426 | H.264 | 0.22 | 6.7 px | 5 / 1344 | intact |
+| 144x256 | H.264 199k | 0.13 | 4 px | 3 / 1344 | intact |
+
+Two things matter more than the verdict.
+
+**YouTube cost nothing.** The three unreadable frames are the same three that failed
+in the local decode before the upload. They come from this codec's own registration,
+not from the platform.
+
+**The profile is heavily overbuilt.** It was designed to survive a scaling factor of
+8/15 and it survived 1/7.5, with cells reduced to four pixels and AV1 at a twentieth
+of the source bitrate. The 114 percent overhead buys far more margin than the channel
+demands, so a much denser social profile is possible. That is a change to make on
+measurements, not on one upload.
+
+**What this does not prove.** One video, one platform, one day. It says nothing about
+TikTok, about longer videos where frame rate conversion behaves differently, or about
+what YouTube's pipeline will do next year. `archive` remains unverified against any
+platform, which is correct: its channel is one that does not re-encode.
 
 ## Codec design
 

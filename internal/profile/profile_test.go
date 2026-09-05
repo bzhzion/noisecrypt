@@ -143,6 +143,20 @@ func TestRedundancyIsDerivedNotDeclared(t *testing.T) {
 	}
 }
 
+// TestVerifiedFlagMatchesWhatWasMeasured pins the one claim a user cannot check for
+// themselves. `social` has been through a real YouTube round trip; `archive` has only
+// ever been re-encoded locally, and its channel is one that does not re-encode at all,
+// so there is nothing to verify it against. Flipping either flag without doing the
+// measurement should break this test rather than quietly change what the tool claims.
+func TestVerifiedFlagMatchesWhatWasMeasured(t *testing.T) {
+	if !Social.Verified {
+		t.Error("social was measured against every YouTube Shorts rendition on 2026-09-05; the flag should say so")
+	}
+	if Archive.Verified {
+		t.Error("archive has only been re-encoded locally, never through a platform; it must not claim to be verified")
+	}
+}
+
 func TestEstimateHandlesEmptyInput(t *testing.T) {
 	l, err := Archive.Layout()
 	if err != nil {

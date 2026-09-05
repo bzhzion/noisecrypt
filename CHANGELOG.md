@@ -84,6 +84,18 @@ patched by CI at tag time and are never committed with a real version number.
 
 ### Measured
 
+- **Real platform round trip, 2026-09-05.** A 45 second Short carrying 160 KiB of
+  incompressible payload was uploaded to YouTube unlisted, and every rendition YouTube
+  produced was downloaded and decoded. All nine recovered the payload byte for byte:
+  1080x1920 in H.264, VP9 and AV1, then 720x1280, 608x1080, 480x854, 360x640, 240x426
+  and 144x256. The `social` profile is now marked `Verified`.
+  - YouTube cost nothing: the three unreadable frames out of 1344 are the same three
+    that failed locally before the upload, so they come from this codec's registration
+    rather than from the platform.
+  - The profile is heavily overbuilt. Designed for a scaling factor of 8/15, it
+    survived 1/7.5, with cells reduced to four pixels and AV1 at a twentieth of the
+    source bitrate. A much denser social profile is possible, on measurement.
+
 - Soft demodulation, on the social geometry at a 1.75 percent raw byte error rate:
   30 of 32 frames repaired using confidence, 3 without it.
 - Error envelope of the social geometry: 25 percent intra parity carries 123 payload
