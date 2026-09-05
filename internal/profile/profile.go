@@ -120,7 +120,7 @@ var Archive = Profile{
 // one video is not a survey of the platform.
 var Social = Profile{
 	Name:             "social",
-	Summary:          "robust, for platforms that re-encode (vertical 9:16, heavy downscaling)",
+	Summary:          "toughest, for platforms, readable even from the bottom of the rendition ladder",
 	Width:            1080,
 	Height:           1920,
 	FPS:              30,
@@ -133,9 +133,53 @@ var Social = Profile{
 	Verified:         true, // YouTube Shorts, every rendition, 2026-09-05
 }
 
+// SocialHD trades the very bottom of a platform's rendition ladder for four and a half
+// times the payload.
+//
+// # The measurement this profile exists because of
+//
+// `simulate` was extended to downscale as well as re-compress, which is what a platform
+// actually does, and cell sizes were swept against the ladder. Everything survived far
+// lower than expected, and the useful figure turned out not to be the resolution but the
+// pixels left per cell:
+//
+//	30 px cells hold down to 256p (4.0 px per cell)
+//	20 px cells hold down to 426p (4.4 px per cell)
+//	15 px cells hold down to 426p (3.3 px per cell)
+//	12 px cells fail at   426p (2.7 px per cell)
+//	10 px cells fail at   426p (2.2 px per cell)
+//
+// So 15 px is the densest geometry that still clears a 426p floor, which is the lowest
+// rendition anyone would deliberately retrieve data from.
+//
+// # The non-monotonic result, which is the interesting part
+//
+// 15 px cells fail at 320p and then succeed again at 256p. Lower resolution, better
+// outcome. The cause is fractional cell boundaries: 1920/320 is 6 and 15/6 is 2.5, so
+// every cell straddles a pixel; 1920/256 is 7.5 and 15/7.5 is exactly 2, so they line up.
+//
+// The rule that falls out is more useful than "pick a multiple of the denominator":
+// above roughly 6 pixels per cell a fractional boundary is absorbed, because there are
+// interior pixels to average; below about 3 it is fatal, because there are none.
+var SocialHD = Profile{
+	Name:             "social-hd",
+	Summary:          "denser, for platforms, when you can retrieve at 426p or better",
+	Width:            1080,
+	Height:           1920,
+	FPS:              30,
+	CellSize:         15,
+	Levels:           2,
+	Margin:           30,
+	IntraParityRatio: 0.25,
+	InterData:        24,
+	InterParity:      8,
+	Verified:         false, // local rescaling simulation only; no platform round trip yet
+}
+
 var registry = map[string]Profile{
-	Archive.Name: Archive,
-	Social.Name:  Social,
+	Archive.Name:  Archive,
+	Social.Name:   Social,
+	SocialHD.Name: SocialHD,
 }
 
 // Names returns the available profile names in a stable order.

@@ -16,10 +16,22 @@ func TestBuiltInProfilesAreValid(t *testing.T) {
 	}
 }
 
-// TestSocialCellSizeSurvivesPlatformScaling guards the one piece of tuning that is
-// load-bearing rather than folklore: a cell size that is not a multiple of the
-// scaling denominator lands on fractional pixel boundaries after the platform
-// resizes the video, which smears every cell edge into its neighbour.
+// TestSocialCellSizeSurvivesPlatformScaling checks that the toughest profile lands on
+// whole pixels through the reference downscale.
+//
+// The rationale here was refined by measurement on 2026-09-05 and the original version
+// of this comment overstated it. Divisibility is not always load-bearing: real
+// renditions at 608x1080 and 480x854 put cells on fractional boundaries and decoded
+// perfectly, because a 16 px cell has interior pixels to average even when its edges
+// are shared.
+//
+// What actually matters is how many pixels a cell has left. Above roughly six, a
+// fractional boundary is absorbed. Below about three it is fatal, and then divisibility
+// decides everything: 15 px cells fail at 320p (2.5 px per cell, straddling) and succeed
+// again at 256p (exactly 2 px, aligned), which is lower resolution and a better result.
+//
+// So this test is about the toughest profile keeping its margin at the reference scale,
+// not about divisibility being sacred.
 func TestSocialCellSizeSurvivesPlatformScaling(t *testing.T) {
 	// The reference case: 1080 wide scaled to 576, a factor of 8/15.
 	const num, den = 8, 15
@@ -38,12 +50,45 @@ func TestSocialCellSizeSurvivesPlatformScaling(t *testing.T) {
 	}
 }
 
-func TestArchiveIsDenserThanSocial(t *testing.T) {
-	a := Archive.PayloadBytesPerFrame()
-	s := Social.PayloadBytesPerFrame()
-	if a <= s {
-		t.Fatalf("archive carries %d bytes per frame, social carries %d: the dense profile is not denser", a, s)
+// TestProfilesAreOrderedByDensity pins the relationship the three profiles exist to
+// express. Each step down in toughness has to buy real payload, or it has no reason to
+// be offered as a choice.
+func TestProfilesAreOrderedByDensity(t *testing.T) {
+	tough := Social.PayloadBytesPerFrame()
+	dense := SocialHD.PayloadBytesPerFrame()
+	archive := Archive.PayloadBytesPerFrame()
+
+	if !(archive > dense && dense > tough) {
+		t.Fatalf("payload per frame should rise from social (%d) to social-hd (%d) to archive (%d)",
+			tough, dense, archive)
 	}
+
+	// The measured gain from halving the cell size. Below three times, the extra
+	// profile is not worth the choice it forces on the user.
+	if gain := float64(dense) / float64(tough); gain < 3 {
+		t.Fatalf("social-hd carries only %.1fx the payload of social; not worth a separate profile", gain)
+	}
+
+	t.Logf("payload per frame: social %d B, social-hd %d B (%.1fx), archive %d B",
+		tough, dense, float64(dense)/float64(tough), archive)
+}
+
+// TestSocialHDStaysAboveTheFractionalCliff guards the finding that produced this
+// profile. Cells below roughly three pixels after downscaling fail when the boundaries
+// land on fractional pixels, and 15 px cells sit right at the edge of that: they clear a
+// 426p floor at 3.3 px per cell and would not clear anything much lower.
+//
+// If someone shrinks this cell size further, this test is where they should be forced to
+// justify it with a new measurement.
+func TestSocialHDStaysAboveTheFractionalCliff(t *testing.T) {
+	const floorHeight = 426 // the lowest rendition worth retrieving data from
+
+	pxPerCell := float64(SocialHD.CellSize) * float64(floorHeight) / float64(SocialHD.Height)
+	if pxPerCell < 3 {
+		t.Fatalf("at %dp a %d px cell becomes %.1f px, below the ~3 px floor measured on 2026-09-05",
+			floorHeight, SocialHD.CellSize, pxPerCell)
+	}
+	t.Logf("at %dp a %d px cell becomes %.1f px", floorHeight, SocialHD.CellSize, pxPerCell)
 }
 
 func TestLookup(t *testing.T) {
@@ -154,6 +199,9 @@ func TestVerifiedFlagMatchesWhatWasMeasured(t *testing.T) {
 	}
 	if Archive.Verified {
 		t.Error("archive has only been re-encoded locally, never through a platform; it must not claim to be verified")
+	}
+	if SocialHD.Verified {
+		t.Error("social-hd has only been through the local rescaling simulation; it must not claim a platform round trip")
 	}
 }
 

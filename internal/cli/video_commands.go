@@ -226,6 +226,7 @@ func runSimulate(env *Env, args []string) error {
 	in := fs.String("in", "", "file to use as the payload (default: a synthetic one block payload)")
 	profileName := fs.String("profile", "", "profile to test (default: all of them)")
 	crfList := fs.String("crf", "20,26,30,34,38,42", "comma separated x264 qualities to re-encode at")
+	heightList := fs.String("heights", "", "comma separated heights to also downscale to, mimicking a platform's rendition ladder (default: the profile's own height only)")
 	keep := fs.String("keep", "", "directory to leave the produced videos in, for inspection")
 
 	// Geometry overrides, so a candidate can be measured before it is registered as
@@ -248,6 +249,13 @@ func runSimulate(env *Env, args []string) error {
 	crfs, err := parseInts(*crfList)
 	if err != nil {
 		return fmt.Errorf("-crf: %w", err)
+	}
+
+	var heights []int
+	if *heightList != "" {
+		if heights, err = parseInts(*heightList); err != nil {
+			return fmt.Errorf("-heights: %w", err)
+		}
 	}
 
 	profiles := profile.All()
@@ -309,8 +317,14 @@ func runSimulate(env *Env, args []string) error {
 			return err
 		}
 
-		fmt.Fprintf(env.Stdout, "\n%s: %s payload, %d frames at %dx%d\n",
-			p.Name, humanBytes(int64(len(payload))), c.FrameCount(len(payload)), p.Width, p.Height)
+		ladder := heights
+		if len(ladder) == 0 {
+			ladder = []int{p.Height}
+		}
+
+		fmt.Fprintf(env.Stdout, "\n%s: %s payload, %d frames at %dx%d, %d px cells, %d levels\n",
+			p.Name, humanBytes(int64(len(payload))), c.FrameCount(len(payload)),
+			p.Width, p.Height, p.CellSize, p.Levels)
 
 		// The reference encode. Everything after this is a second pass on top of it,
 		// which is what an ingest pipeline does to a video it is given.
@@ -319,35 +333,43 @@ func runSimulate(env *Env, args []string) error {
 			return err
 		}
 
-		for _, crf := range crfs {
-			out := filepath.Join(dir, fmt.Sprintf("%s-crf%d.mp4", p.Name, crf))
-			if err := recompress(tools, master, out, p, crf); err != nil {
-				return err
-			}
+		for _, height := range ladder {
+			for _, crf := range crfs {
+				out := filepath.Join(dir, fmt.Sprintf("%s-h%d-crf%d.mp4", p.Name, height, crf))
+				if err := recompress(tools, master, out, p, crf, height); err != nil {
+					return err
+				}
 
-			d := c.NewDecoder()
-			if _, err := video.Read(context.Background(), tools, out, func(img *image.Gray) error {
-				d.Add(img)
-				return nil
-			}); err != nil {
-				return err
-			}
+				d := c.NewDecoder()
+				if _, err := video.Read(context.Background(), tools, out, func(img *image.Gray) error {
+					d.Add(img)
+					return nil
+				}); err != nil {
+					return err
+				}
 
-			size := int64(0)
-			if fi, err := os.Stat(out); err == nil {
-				size = fi.Size()
-			}
+				size := int64(0)
+				if fi, err := os.Stat(out); err == nil {
+					size = fi.Size()
+				}
 
-			got, decErr := d.Finish()
-			switch {
-			case decErr != nil:
-				fmt.Fprintf(env.Stdout, "  CRF %-3d %-9s FAILED   %d of %d frames unreadable: %v\n",
-					crf, humanBytes(size), d.Unreadable, d.Seen, decErr)
-			case len(got) != len(payload) || string(got) != string(payload):
-				fmt.Fprintf(env.Stdout, "  CRF %-3d %-9s WRONG    decoded but the bytes differ\n", crf, humanBytes(size))
-			default:
-				fmt.Fprintf(env.Stdout, "  CRF %-3d %-9s ok       %d of %d frames unreadable\n",
-					crf, humanBytes(size), d.Unreadable, d.Seen)
+				// How many pixels a cell has left is the number that decides
+				// everything, so print it rather than making the reader derive it.
+				cell := float64(p.CellSize) * float64(height) / float64(p.Height)
+				label := fmt.Sprintf("%dp CRF %-3d cell %4.1f px", height, crf, cell)
+
+				got, decErr := d.Finish()
+				switch {
+				case decErr != nil:
+					fmt.Fprintf(env.Stdout, "  %-28s %-9s FAILED   %d of %d frames unreadable\n",
+						label, humanBytes(size), d.Unreadable, d.Seen)
+				case len(got) != len(payload) || string(got) != string(payload):
+					fmt.Fprintf(env.Stdout, "  %-28s %-9s WRONG    decoded but the bytes differ\n",
+						label, humanBytes(size))
+				default:
+					fmt.Fprintf(env.Stdout, "  %-28s %-9s ok       %d of %d frames unreadable\n",
+						label, humanBytes(size), d.Unreadable, d.Seen)
+				}
 			}
 		}
 	}
@@ -403,9 +425,16 @@ func encodeQuietly(c *codec.Codec, tools video.Tools, payload []byte, path strin
 	})
 }
 
-// recompress reads a video and writes it out again at a lower quality, which is the
-// cheapest honest stand-in for an ingest pipeline.
-func recompress(tools video.Tools, src, dst string, p profile.Profile, crf int) error {
+// recompress reads a video and writes it out again at a lower quality, and optionally
+// at a lower resolution.
+//
+// The rescaling matters more than the compression, and its absence was a real hole in
+// this command. A platform does not just squeeze a video, it produces a ladder of
+// renditions and a viewer usually receives one well below what was uploaded. Measuring
+// only the compression answered the easier half of the question while the output text
+// admitted the other half was untested. Now the resolution floor is measurable without
+// uploading anything.
+func recompress(tools video.Tools, src, dst string, p profile.Profile, crf, height int) error {
 	var frames []*image.Gray
 	if _, err := video.Read(context.Background(), tools, src, func(img *image.Gray) error {
 		frames = append(frames, img)
@@ -414,9 +443,18 @@ func recompress(tools video.Tools, src, dst string, p profile.Profile, crf int) 
 		return err
 	}
 
+	width, outHeight := p.Width, p.Height
+	if height > 0 && height != p.Height {
+		// Keep the aspect ratio and force an even width, which H.264 requires.
+		width = p.Width * height / p.Height
+		width -= width % 2
+		outHeight = height - height%2
+		frames = resizeFrames(frames, width, outHeight)
+	}
+
 	next := 0
 	return video.Write(context.Background(), tools, video.WriteOptions{
-		Path: dst, Width: p.Width, Height: p.Height, FPS: p.FPS, CRF: crf, Preset: "veryfast",
+		Path: dst, Width: width, Height: outHeight, FPS: p.FPS, CRF: crf, Preset: "veryfast",
 	}, func() (*image.Gray, error) {
 		if next >= len(frames) {
 			return nil, nil
@@ -425,6 +463,35 @@ func recompress(tools video.Tools, src, dst string, p profile.Profile, crf int) 
 		next++
 		return img, nil
 	})
+}
+
+// resizeFrames downscales by area averaging, which is what a sane resampler does and
+// what makes a cell's value the mean of the pixels it used to occupy.
+func resizeFrames(frames []*image.Gray, w, h int) []*image.Gray {
+	out := make([]*image.Gray, len(frames))
+	for i, src := range frames {
+		sw, sh := src.Bounds().Dx(), src.Bounds().Dy()
+		dst := image.NewGray(image.Rect(0, 0, w, h))
+		for y := range h {
+			y0, y1 := y*sh/h, max(y*sh/h+1, (y+1)*sh/h)
+			for x := range w {
+				x0, x1 := x*sw/w, max(x*sw/w+1, (x+1)*sw/w)
+				sum, n := 0, 0
+				for yy := y0; yy < min(y1, sh); yy++ {
+					row := src.Pix[yy*src.Stride:]
+					for xx := x0; xx < min(x1, sw); xx++ {
+						sum += int(row[xx])
+						n++
+					}
+				}
+				if n > 0 {
+					dst.Pix[y*dst.Stride+x] = uint8(sum / n)
+				}
+			}
+		}
+		out[i] = dst
+	}
+	return out
 }
 
 // sealFile packs and seals a file, returning the container and the plaintext size.

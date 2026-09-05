@@ -259,20 +259,42 @@ noisecrypt open -in report.pdf.ncry
 noisecrypt profiles
 ```
 
-| Profile | Use it when | Data per frame | Overhead | A 40 MiB file becomes |
-|---|---|---|---|---|
-| `archive` | Nothing will re-encode the video: a hard drive, a USB stick, cloud storage, a torrent | 26 419 B | 17 % | 54 seconds |
-| `social` | A platform will chew on it: vertical video, heavy shrinking, repeated compression | 123 B | 114 % | 3 hours 9 minutes |
+| Profile | Use it when | Data per frame | A 40 MiB file becomes |
+|---|---|---|---|
+| `archive` | Nothing will re-encode the video: a hard drive, a USB stick, cloud storage, a torrent | 26 393 B | **54 seconds** |
+| `social-hd` | A platform will chew on it, and you can download at 426p or better | 567 B | **41 minutes** |
+| `social` | A platform will chew on it, and you want it readable even from the very bottom of the quality ladder | 123 B | **3 hours 9 minutes** |
 
-The gap is dramatic and it is the central trade of the whole tool. Toughness is bought
-with time. `archive` assumes nobody will touch the file and packs data tightly. `social`
-assumes the worst and spends most of the frame on redundancy.
+The gap is dramatic and it is the central trade of the whole tool: **toughness is bought
+with time.** `archive` assumes nobody will touch the file and packs data tightly. The two
+`social` profiles assume the worst and spend most of each frame on redundancy.
+
+Between the two, `social-hd` is the one to reach for. The extra toughness in `social`
+only pays off if you might one day have to recover your file from a 256p copy, which is
+not something anyone does deliberately, and it costs you four and a half times the
+duration. Those floors are measured, not guessed:
+
+| Cell size | Lowest quality that still decodes | Pixels per cell there |
+|---|---|---|
+| 30 px (`social`) | 256p | 4.0 |
+| 15 px (`social-hd`) | 426p | 3.3 |
+| 12 px | 640p | 4.0 |
+| 10 px | 640p | 3.3 |
+
+There is a genuinely odd result hiding in that table. 15 px cells **fail** at 320p and
+then **succeed** again at 256p: lower quality, better outcome. The reason is that cells
+have to land on whole pixels once they get small. At 320p a 15 px cell becomes 2.5
+pixels and straddles a boundary; at 256p it becomes exactly 2 and lines up.
+
+The useful rule, then, is not about resolution but about pixels per cell. Above roughly
+six, a cell has interior pixels to average and survives sloppy boundaries. Below about
+three, it does not, and alignment decides everything.
 
 Pick with `-profile`, and use the same one at both ends:
 
 ```sh
-noisecrypt encode -in big.zip -out big.mp4 -profile social
-noisecrypt decode -in big.mp4 -out big.zip -profile social
+noisecrypt encode -in big.zip -out big.mp4 -profile social-hd
+noisecrypt decode -in big.mp4 -out big.zip -profile social-hd
 ```
 
 Those numbers are calculated from the actual error-correcting layout rather than written
@@ -284,13 +306,25 @@ down beside it, so they cannot drift out of date when the code changes.
 noisecrypt simulate -profile social
 ```
 
-This encodes a payload, re-compresses the video at a range of qualities, and reports
-which ones still decode. It exists so that nothing here has to be taken on faith. Run it
-on your own machine and see for yourself.
+This encodes a payload, re-compresses the video at a range of qualities and resolutions,
+and reports which combinations still decode. It exists so that nothing here has to be
+taken on faith. Run it on your own machine and see for yourself.
 
-Bear in mind it is a local test: a real platform also rescales and changes frame rates,
-so treat the results as a floor rather than a ceiling. The command prints that caveat
-itself.
+Add `-heights` to walk down a platform's quality ladder, which is where the interesting
+failures live:
+
+```sh
+noisecrypt simulate -profile social-hd -heights 1920,1280,854,640,426
+```
+
+And if you want to tune your own geometry, override it before committing to it:
+
+```sh
+noisecrypt simulate -profile social -cell 12 -heights 1920,854,426
+```
+
+Candidates report themselves as unverified on every line, because a number you have not
+measured is a guess wearing a number's clothes.
 
 ---
 
@@ -319,9 +353,10 @@ build command targets all six platforms.
 
 ## What is coming
 
-1. **A denser `social` profile.** The YouTube results showed enormous unused margin: the
-   profile was designed for a shrink factor it beat by a wide distance. Reclaiming that
-   margin turns those 3 hours per 40 MiB into something far more usable.
+1. **A platform round trip for `social-hd`.** Its floors come from a local simulation of
+   what a platform does, which is a good stand-in and not the real thing. Until a video
+   has actually been through an ingest pipeline and come back, `social-hd` reports itself
+   as unverified, and `social` remains the only profile with a real round trip behind it.
 2. **Digital signatures**, so a container proves who created it and not merely that
    somebody could have. Post-quantum and classical together, on the same reasoning as the
    key exchange.

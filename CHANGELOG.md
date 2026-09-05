@@ -128,6 +128,26 @@ patched by CI at tag time and are never committed with a real version number.
 
 ### Added
 
+- **`social-hd`, a third channel profile.** 15 pixel cells instead of 30, carrying 567
+  payload bytes per frame against 123, so 40 MiB becomes **41 minutes of video instead of
+  3 hours 9**. It gives up only the very bottom of a platform's quality ladder: it decodes
+  from 426p and better, where `social` reaches down to 256p. Nobody deliberately recovers
+  a file from a 256p copy, so this is the one to reach for.
+  - Measured, not guessed. Cell sizes were swept against a simulated rendition ladder:
+    30 px holds to 256p, 20 px and 15 px to 426p, 12 px and 10 px only to 640p.
+  - It reports itself as unverified until a real platform round trip, exactly as `social`
+    did before its YouTube test.
+- **`simulate` now downscales as well as re-compresses** (`-heights`), which closes a hole
+  the command used to admit to in its own output: it tested what a platform does to
+  quality and not what it does to resolution, and resolution is where the failures are.
+  Validated by reproducing the real YouTube result locally.
+  - This surfaced a genuinely odd behaviour worth knowing about. 15 px cells **fail** at
+    320p and **succeed** at 256p: lower resolution, better outcome. At 320p a cell becomes
+    2.5 pixels and straddles a boundary; at 256p it becomes exactly 2 and aligns. The rule
+    that falls out is about pixels per cell rather than resolution: above roughly six a
+    fractional boundary is absorbed, below about three it is fatal. The comment claiming
+    divisibility was always load-bearing has been corrected; real renditions at 608x1080
+    and 480x854 put cells on fractional boundaries and decoded perfectly.
 - `simulate` takes geometry overrides (`-cell`, `-levels`, `-intra-parity`,
   `-inter-parity`) so a candidate can be measured before it is registered as a profile.
   Tuning a channel by editing a constant, rebuilding and eyeballing the result is how
