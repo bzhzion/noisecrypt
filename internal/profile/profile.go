@@ -161,6 +161,29 @@ var Social = Profile{
 // The rule that falls out is more useful than "pick a multiple of the denominator":
 // above roughly 6 pixels per cell a fractional boundary is absorbed, because there are
 // interior pixels to average; below about 3 it is fatal, because there are none.
+//
+// # The platform round trip, 2026-09-05
+//
+// A 46 second Short carrying 750 KiB was uploaded unlisted and every rendition pulled
+// back. All ten recovered the payload byte for byte, 1080x1920 down to 144x256 across
+// H.264, VP9 and AV1, with **zero unreadable frames anywhere**.
+//
+// Two results worth carrying forward.
+//
+// The simulation was pessimistic, not optimistic, which is the safe direction to be
+// wrong in. It predicted failure at 320p; YouTube does not produce a 320p rendition, so
+// the one geometry this profile dislikes never arises there. Do not read that as the
+// simulation being wrong: read it as this profile having a real weak point that this
+// particular platform happens not to hit.
+//
+// And the three frames that were always unreadable under the 30 px profile are gone.
+// They came from the border detector treating a mostly dark first row of data as more
+// border, and halving the cell size doubles the cells per row, which makes such a row
+// far less likely. So the denser profile is not merely faster, it is cleaner.
+//
+// On YouTube specifically this profile is therefore strictly better than Social: same
+// survival, four and a half times the payload, fewer lost frames. Social remains the
+// right answer for a platform nobody has measured.
 var SocialHD = Profile{
 	Name:             "social-hd",
 	Summary:          "denser, for platforms, when you can retrieve at 426p or better",
@@ -173,7 +196,7 @@ var SocialHD = Profile{
 	IntraParityRatio: 0.25,
 	InterData:        24,
 	InterParity:      8,
-	Verified:         false, // local rescaling simulation only; no platform round trip yet
+	Verified:         true, // YouTube Shorts, all ten renditions, zero lost frames, 2026-09-05
 }
 
 var registry = map[string]Profile{

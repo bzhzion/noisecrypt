@@ -200,8 +200,8 @@ func TestVerifiedFlagMatchesWhatWasMeasured(t *testing.T) {
 	if Archive.Verified {
 		t.Error("archive has only been re-encoded locally, never through a platform; it must not claim to be verified")
 	}
-	if SocialHD.Verified {
-		t.Error("social-hd has only been through the local rescaling simulation; it must not claim a platform round trip")
+	if !SocialHD.Verified {
+		t.Error("social-hd recovered every YouTube rendition on 2026-09-05, including 144x256; the flag should say so")
 	}
 }
 

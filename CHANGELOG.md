@@ -128,15 +128,26 @@ patched by CI at tag time and are never committed with a real version number.
 
 ### Added
 
-- **`social-hd`, a third channel profile.** 15 pixel cells instead of 30, carrying 567
-  payload bytes per frame against 123, so 40 MiB becomes **41 minutes of video instead of
-  3 hours 9**. It gives up only the very bottom of a platform's quality ladder: it decodes
-  from 426p and better, where `social` reaches down to 256p. Nobody deliberately recovers
-  a file from a 256p copy, so this is the one to reach for.
-  - Measured, not guessed. Cell sizes were swept against a simulated rendition ladder:
-    30 px holds to 256p, 20 px and 15 px to 426p, 12 px and 10 px only to 640p.
-  - It reports itself as unverified until a real platform round trip, exactly as `social`
-    did before its YouTube test.
+- **`social-hd`, a third channel profile, verified against YouTube.** 15 pixel cells
+  instead of 30, carrying 567 payload bytes per frame against 123, so 40 MiB becomes
+  **41 minutes of video instead of 3 hours 9**.
+  - **Platform round trip, 2026-09-05**: a 46 second Short carrying 750 KiB, every
+    rendition pulled back and decoded. **All ten recovered the payload byte for byte**,
+    1080x1920 down to 144x256 across H.264, VP9 and AV1, with **zero unreadable frames
+    anywhere**.
+  - Two results worth carrying forward. The simulation was **pessimistic** rather than
+    optimistic, which is the safe direction to be wrong in: it predicted failure at 320p,
+    and YouTube produces no 320p rendition, so the one geometry this profile dislikes
+    never arises there. That weakness is real and is why `social` still exists.
+  - And the three frames that were always unreadable under `social` are gone. They came
+    from the border detector eating a mostly dark first row of data; halving the cell size
+    doubles the cells per row and makes such a row far less likely. The faster profile is
+    also the cleaner one, which confirms the earlier diagnosis of those three frames.
+  - On YouTube specifically `social-hd` is therefore strictly better: same survival, four
+    and a half times the payload, fewer lost frames. `social` remains the answer for a
+    platform nobody has measured.
+  - The floors were found first by simulation: 30 px holds to 256p, 20 px and 15 px to
+    426p, 12 px and 10 px only to 640p.
 - **`simulate` now downscales as well as re-compresses** (`-heights`), which closes a hole
   the command used to admit to in its own output: it tested what a platform does to
   quality and not what it does to resolution, and resolution is where the failures are.

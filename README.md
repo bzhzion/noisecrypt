@@ -7,11 +7,11 @@ meaningless to look at. Upload it, download it, and NoiseCrypt hands you the ori
 file back, identical to the last bit. It is encrypted the whole way, and it is built to
 survive being crushed by whatever the video travelled through.
 
-> We uploaded a 160 KiB file to YouTube as a 45 second Short. YouTube re-encoded it into
-> nine different versions, shrinking one of them from 1080 pixels wide down to 144 and
-> compressing it to a twentieth of its original bitrate.
+> We uploaded files to YouTube as unlisted Shorts. YouTube re-encoded each one into
+> around ten different versions, shrinking one of them from 1080 pixels wide down to 144
+> and compressing it to a fraction of its original bitrate.
 >
-> **All nine gave the file back perfectly.** [See the numbers.](#the-proof)
+> **Every single version gave the file back perfectly.** [See the numbers.](#the-proof)
 
 ---
 
@@ -123,9 +123,7 @@ and decoded.
 
 | What YouTube served | Codec | Shrunk to | Squares became | Result |
 |---|---|---|---|---|
-| 1080x1920 | H.264 | full size | 30 px | ✅ perfect |
-| 1080x1920 | VP9 | full size | 30 px | ✅ perfect |
-| 1080x1920 | AV1 | full size | 30 px | ✅ perfect |
+| 1080x1920 | H.264, VP9, AV1 | full size | 30 px | ✅ perfect |
 | 720x1280 | H.264, VP9 | 67 % | 20 px | ✅ perfect |
 | 608x1080 | AV1 | 56 % | 16.9 px | ✅ perfect |
 | 480x854 | H.264 | 44 % | 13.3 px | ✅ perfect |
@@ -139,6 +137,22 @@ similar. Identical.
 The most extreme row is worth sitting with. At 144x256, each of those carefully sized
 30 pixel squares had been crushed to about 4 pixels, and the whole clip was down to
 199 kbit/s. It still worked.
+
+### And then the fast profile did the same thing
+
+The test was repeated with `social-hd`, which uses squares half the size and carries
+**four and a half times as much data**. A 750 KiB file, 46 seconds of video, every
+rendition downloaded again.
+
+**All ten came back identical, down to 144x256, and this time not a single frame was
+unreadable anywhere.** The tougher profile loses three frames out of 1376 to its own
+registration; halving the square size puts twice as many squares in every row, which
+makes the situation that causes those losses far less likely. The faster profile is also
+the cleaner one.
+
+So on YouTube, `social-hd` is simply the better choice: identical survival, four and a
+half times the throughput. `social` keeps its place as the answer for a platform nobody
+has measured yet.
 
 **What this does not prove.** One file, one platform, one day. It says nothing about
 other platforms, about hour-long videos where frame rates get converted differently, or
@@ -269,10 +283,15 @@ The gap is dramatic and it is the central trade of the whole tool: **toughness i
 with time.** `archive` assumes nobody will touch the file and packs data tightly. The two
 `social` profiles assume the worst and spend most of each frame on redundancy.
 
-Between the two, `social-hd` is the one to reach for. The extra toughness in `social`
-only pays off if you might one day have to recover your file from a 256p copy, which is
-not something anyone does deliberately, and it costs you four and a half times the
-duration. Those floors are measured, not guessed:
+Between the two, `social-hd` is the one to reach for, and the YouTube test settled it:
+both profiles recovered every rendition, so the extra toughness bought nothing there and
+cost four and a half times the duration. Keep `social` for a platform whose behaviour you
+have not measured.
+
+The floors below come from a local simulation of a platform's quality ladder, and they
+are worth reading alongside the real test rather than instead of it. The simulation said
+15 px cells would fail at 320p; YouTube does not produce a 320p rendition, so that
+weakness never came up. It is still real, and it is why `social` exists.
 
 | Cell size | Lowest quality that still decodes | Pixels per cell there |
 |---|---|---|
@@ -353,10 +372,9 @@ build command targets all six platforms.
 
 ## What is coming
 
-1. **A platform round trip for `social-hd`.** Its floors come from a local simulation of
-   what a platform does, which is a good stand-in and not the real thing. Until a video
-   has actually been through an ingest pipeline and come back, `social-hd` reports itself
-   as unverified, and `social` remains the only profile with a real round trip behind it.
+1. **A second platform.** Both social profiles have now been through YouTube and back.
+   Every other platform remains an assumption, and the `social-hd` simulation shows it
+   has a real weak point that YouTube simply never exercises.
 2. **Digital signatures**, so a container proves who created it and not merely that
    somebody could have. Post-quantum and classical together, on the same reasoning as the
    key exchange.
