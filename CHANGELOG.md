@@ -10,6 +10,52 @@ patched by CI at tag time and are never committed with a real version number.
 
 ## [Unreleased]
 
+### Added
+
+- **Optional digital signatures**, so a container can prove who produced it rather than
+  only that somebody knew the recipient's public key. `-sign` when encrypting, `-from`
+  or `-require-signature` when decrypting.
+  - Hybrid, on the same reasoning as the key exchange: Ed25519 **and** ML-DSA-65
+    (FIPS 204), both produced and both required to verify. There is no mode that accepts
+    one of the two.
+  - **Optional means optional.** A signature that is present must verify, and a failure
+    is fatal rather than a warning, because tolerating a broken one would make stripping
+    a signature as effective as forging it. A signature that is absent is not an error;
+    the tool says plainly that nothing proves the container's origin, and refusing that
+    is the caller's decision through `-require-signature`.
+  - The signature is made over the **plaintext**, so it travels inside the ciphertext
+    and only the recipient learns who sent the container. Putting it outside would tell
+    every observer, which contradicts the point of keeping metadata confidential.
+  - What is signed includes **the recipient's fingerprint**, closing surreptitious
+    forwarding: a recipient cannot re-encrypt a still-valid signed payload to a third
+    party and have it verify there.
+- Identities now carry four keys instead of two, because encryption keys cannot sign.
+  A public identity goes from 1216 to 3200 bytes, so the pasted token grows from about
+  1620 to 4288 characters. The private half stays at 160 bytes by storing seeds rather
+  than expanded keys.
+- `PublicIdentity.Short`, a grouped 64-bit fingerprint, used wherever a human needs to
+  see which identity is involved.
+
+### Fixed
+
+- **The signature did not cover the signer's own encryption keys.** Found by flipping
+  every bit of a signed payload rather than by reading the code: byte 53 could be
+  changed with the signature still verifying. A signed payload embeds the signer's
+  identity, which holds four keys, and only the signing pair takes part in verification,
+  so the encryption keys inside it were covered by nothing. An attacker could swap them,
+  keep the signature valid, and a recipient composing a reply from that identity would
+  encrypt it to the attacker. The signed message now includes the signer's whole
+  identity.
+- Printing the full 4288 character identity token on every successful decode buried the
+  rest of the output. It reports a short fingerprint now.
+
+### Security
+
+- `govulncheck` reports GO-2026-5932 in a module we require: `golang.org/x/crypto/openpgp`
+  is unmaintained and unsafe by design. It is **not imported** here, it has no fixed
+  version and never will, since the advisory's remedy is to stop using the package.
+  Recorded as an accepted risk so a future audit does not re-open it.
+
 ## [0.1.0] - 2026-09-05
 
 First tagged release. The pipeline works end to end and both platform profiles have been

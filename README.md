@@ -209,8 +209,40 @@ upload. Anyone who looks at it knows immediately that something is concealed ins
 NoiseCrypt protects *what* your data is, never *that it exists*. If being noticed is
 itself your risk, this is the wrong tool and no amount of encryption changes that.
 
-**It does not prove who sent it.** A container encrypted to your key proves that someone
-knew your public key. It does not prove who. Digital signatures are on the roadmap.
+### Proving who sent it
+
+Encryption alone does not answer that question: a container encrypted to your key only
+proves someone knew your public key, not who they were. Signing does, and it is
+optional.
+
+```sh
+# Alice signs with her own key while encrypting to Bob.
+noisecrypt encode -in report.pdf -to '<Bob's public identity>' -sign alice.key
+
+# Bob accepts it only if Alice really signed it.
+noisecrypt decode -in report.mp4 -identity bob.key -from '<Alice's public identity>'
+```
+
+On success you get a short fingerprint rather than a wall of base64:
+
+```
+Recovered report.pdf (7.1 KiB).
+  Signature verified, signed by 18cd-3849-0f60-5f59
+```
+
+Two signatures are made and both must check out: Ed25519 and ML-DSA-65, the
+post-quantum standard. Same reasoning as the two locks above, applied to authorship.
+
+Three rules are worth knowing because they are what makes the feature mean anything:
+
+- A signature that is **present must verify**. A broken one is a hard failure, never a
+  warning, because otherwise removing a signature would be as good as forging one.
+- A signature that is **absent is not an error**, since signing is optional. Unsigned
+  containers open normally and the tool says plainly that nothing proves their origin.
+  Use `-require-signature` when you want that to be refused.
+- What gets signed includes **who it was for**. Without that, a recipient could
+  re-encrypt your still-signed message to somebody else, who would then see a valid
+  signature from you on a message you never sent them.
 
 ---
 
@@ -375,10 +407,7 @@ build command targets all six platforms.
 1. **A second platform.** Both social profiles have now been through YouTube and back.
    Every other platform remains an assumption, and the `social-hd` simulation shows it
    has a real weak point that YouTube simply never exercises.
-2. **Digital signatures**, so a container proves who created it and not merely that
-   somebody could have. Post-quantum and classical together, on the same reasoning as the
-   key exchange.
-3. **A graphical interface** for Linux, macOS and Windows, for the times a command line is
+2. **A graphical interface** for Linux, macOS and Windows, for the times a command line is
    the wrong answer.
 
 ---

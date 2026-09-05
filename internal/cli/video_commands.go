@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -23,6 +24,7 @@ func runEncode(env *Env, args []string) error {
 	profileName := fs.String("profile", profile.Archive.Name, "channel profile: "+profileList())
 	to := fs.String("to", "", "recipient public identity, or a file containing one; omit to seal with a passphrase")
 	noCompress := fs.Bool("no-compress", false, "skip compression (use for already-compressed input)")
+	signWith := fs.String("sign", "", "sign the container with this private identity, or a file containing one")
 	crf := fs.Int("crf", 18, "x264 quality, lower is better")
 	preset := fs.String("preset", "medium", "x264 speed and size tradeoff")
 	force := fs.Bool("force", false, "overwrite the output file if it already exists")
@@ -57,7 +59,9 @@ func runEncode(env *Env, args []string) error {
 		return err
 	}
 
-	sealed, plainSize, err := sealFile(env, *in, *to, *noCompress, pass, kdf)
+	sealed, plainSize, err := sealFile(env, *in, sealOptions{
+		to: *to, signWith: *signWith, noCompress: *noCompress, kdf: kdf,
+	}, pass)
 	if err != nil {
 		return err
 	}
@@ -145,6 +149,8 @@ func runDecode(env *Env, args []string) error {
 	out := fs.String("out", "", "file to write (default: the name stored inside the container)")
 	profileName := fs.String("profile", profile.Archive.Name, "channel profile used to encode: "+profileList())
 	identity := fs.String("identity", "", "private identity, or a file containing one")
+	from := fs.String("from", "", "require that the container be signed by this public identity")
+	requireSig := fs.Bool("require-signature", false, "refuse a container that carries no signature")
 	force := fs.Bool("force", false, "overwrite the output file if it already exists")
 	pass := &passphraseSource{}
 	pass.register(fs)
@@ -194,23 +200,26 @@ func runDecode(env *Env, args []string) error {
 		return err
 	}
 
-	payload, meta, err := openSealed(env, sealed, *identity, pass)
+	opened, err := openSealed(env, sealed, openOptions{
+		identity: *identity, from: *from, requireSignature: *requireSig,
+	}, pass)
 	if err != nil {
 		return err
 	}
 
 	target := *out
 	if target == "" {
-		target = meta.Name
+		target = opened.Name
 	}
-	if err := writeOutput(target, payload, *force, 0o600); err != nil {
+	if err := writeOutput(target, opened.Data, *force, 0o600); err != nil {
 		return err
 	}
-	if !meta.ModTime.IsZero() {
-		_ = os.Chtimes(target, meta.ModTime, meta.ModTime)
+	if !opened.ModTime.IsZero() {
+		_ = os.Chtimes(target, opened.ModTime, opened.ModTime)
 	}
 
-	fmt.Fprintf(env.Stdout, "Recovered %s (%s).\n", target, humanBytes(int64(len(payload))))
+	fmt.Fprintf(env.Stdout, "Recovered %s (%s).\n", target, humanBytes(int64(len(opened.Data))))
+	reportSigner(env, opened)
 	return nil
 }
 
@@ -494,8 +503,16 @@ func resizeFrames(frames []*image.Gray, w, h int) []*image.Gray {
 	return out
 }
 
+// sealOptions gathers everything the two sealing commands share.
+type sealOptions struct {
+	to         string
+	signWith   string
+	noCompress bool
+	kdf        crypt.KDFParams
+}
+
 // sealFile packs and seals a file, returning the container and the plaintext size.
-func sealFile(env *Env, path, to string, noCompress bool, pass *passphraseSource, kdf crypt.KDFParams) ([]byte, int64, error) {
+func sealFile(env *Env, path string, o sealOptions, pass *passphraseSource) ([]byte, int64, error) {
 	data, err := readInput(path)
 	if err != nil {
 		return nil, 0, err
@@ -506,76 +523,149 @@ func sealFile(env *Env, path, to string, noCompress bool, pass *passphraseSource
 	}
 
 	compression := container.CompressionGzip
-	if noCompress {
+	if o.noCompress {
 		compression = container.CompressionNone
 	}
-	packed, err := container.Pack(container.Metadata{
-		Name:        filepath.Base(path),
-		ModTime:     info.ModTime(),
-		Compression: compression,
-	}, data)
-	if err != nil {
-		return nil, 0, err
+
+	packOpts := container.PackOptions{
+		Metadata: container.Metadata{
+			Name:        filepath.Base(path),
+			ModTime:     info.ModTime(),
+			Compression: compression,
+		},
 	}
 
-	opts := crypt.SealOptions{}
-	if to != "" {
-		recipient, err := resolveRecipient(to)
+	cryptOpts := crypt.SealOptions{}
+	if o.to != "" {
+		recipient, err := resolveRecipient(o.to)
 		if err != nil {
 			return nil, 0, err
 		}
-		opts.Recipient = &recipient
+		cryptOpts.Recipient = &recipient
+		// The recipient goes into the signature so the container cannot be re-aimed
+		// at a third party with its signature intact.
+		packOpts.Recipient = recipient.Fingerprint()
 	} else {
 		p, err := pass.resolve(env, "Passphrase: ")
 		if err != nil {
 			return nil, 0, err
 		}
-		opts.Passphrase = p
-		opts.KDF = kdf
+		cryptOpts.Passphrase = p
+		cryptOpts.KDF = o.kdf
 	}
 
-	sealed, err := crypt.Seal(packed, opts)
+	if o.signWith != "" {
+		signer, err := resolveIdentity(o.signWith)
+		if err != nil {
+			return nil, 0, err
+		}
+		packOpts.Signer = signer
+	}
+
+	packed, err := container.PackWith(packOpts, data)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	sealed, err := crypt.Seal(packed, cryptOpts)
 	if err != nil {
 		return nil, 0, err
 	}
 	return sealed, int64(len(data)), nil
 }
 
-// openSealed opens a container and unpacks it.
-func openSealed(env *Env, sealed []byte, identity string, pass *passphraseSource) ([]byte, container.Metadata, error) {
+// openOptions gathers what the two opening commands share.
+type openOptions struct {
+	identity string
+
+	// from, when set, is the public identity the container must be signed by.
+	from string
+
+	// requireSignature refuses an unsigned container. Without it an unsigned
+	// container opens normally, because signing is optional; with it, the absence of
+	// a signature is an error, which is the only way "signed" means anything.
+	requireSignature bool
+}
+
+// openSealed opens a container, unpacks it, and reports who signed it.
+func openSealed(env *Env, sealed []byte, o openOptions, pass *passphraseSource) (container.Opened, error) {
 	header, _, err := crypt.ParseHeader(sealed)
 	if err != nil {
-		return nil, container.Metadata{}, err
+		return container.Opened{}, err
 	}
 
 	var opts crypt.OpenOptions
+	var recipient [crypt.FingerprintSize]byte
+
 	switch header.Mode {
 	case crypt.ModeHybrid:
-		if identity == "" {
-			return nil, container.Metadata{}, errors.New("this container is sealed to an identity; pass -identity")
+		if o.identity == "" {
+			return container.Opened{}, errors.New("this container is sealed to an identity; pass -identity")
 		}
-		id, err := resolveIdentity(identity)
+		id, err := resolveIdentity(o.identity)
 		if err != nil {
-			return nil, container.Metadata{}, err
+			return container.Opened{}, err
 		}
 		opts.Identity = id
+		recipient = id.Public.Fingerprint()
 	default:
 		p, err := pass.resolve(env, "Passphrase: ")
 		if err != nil {
-			return nil, container.Metadata{}, err
+			return container.Opened{}, err
 		}
 		opts.Passphrase = p
 	}
 
 	payload, err := crypt.Open(sealed, opts)
 	if err != nil {
-		return nil, container.Metadata{}, err
+		return container.Opened{}, err
 	}
-	meta, data, err := container.Unpack(payload)
+
+	// Open verifies the signature if there is one, against this recipient.
+	opened, err := container.Open(payload, recipient)
 	if err != nil {
-		return nil, container.Metadata{}, err
+		return container.Opened{}, err
 	}
-	return data, meta, nil
+
+	if err := checkSigner(opened, o); err != nil {
+		return container.Opened{}, err
+	}
+	return opened, nil
+}
+
+// checkSigner applies the caller's expectations about provenance.
+func checkSigner(opened container.Opened, o openOptions) error {
+	if o.from != "" {
+		want, err := resolveRecipient(o.from)
+		if err != nil {
+			return fmt.Errorf("-from: %w", err)
+		}
+		if opened.Signer == nil {
+			return fmt.Errorf("%w: -from was given but this container is not signed", crypt.ErrWrongSigner)
+		}
+		if !bytes.Equal(opened.Signer.Bytes(), want.Bytes()) {
+			return crypt.ErrWrongSigner
+		}
+		return nil
+	}
+
+	if o.requireSignature && opened.Signer == nil {
+		return errors.New("this container is not signed, and -require-signature was given")
+	}
+	return nil
+}
+
+// reportSigner tells the user what the signature did or did not prove. Saying nothing
+// when a container is unsigned would let the absence pass for a pass.
+//
+// The short fingerprint, not the full token: 4288 characters on every successful decode
+// would bury the rest of the output and train people to skip it.
+func reportSigner(env *Env, opened container.Opened) {
+	if opened.Signer == nil {
+		fmt.Fprintln(env.Stdout, "  Not signed: nothing here proves who produced this container.")
+		return
+	}
+	fmt.Fprintf(env.Stdout, "  Signature verified, signed by %s\n", opened.Signer.Short())
 }
 
 func profileList() string {

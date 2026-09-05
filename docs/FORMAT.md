@@ -50,12 +50,15 @@ container.
 | 0 | `b[4]` | Magic, ASCII `NCPL` |
 | 4 | `u8` | Version, `1` |
 | 5 | `u8` | Compression: `0` none, `1` gzip |
-| 6 | `u16` | Name length `L`, at most 1024 |
-| 8 | `b[L]` | File name, UTF-8 |
-| 8+L | `u64` | Modification time, seconds since the Unix epoch, UTC |
-| 16+L | `u64` | Original size, before compression |
-| 24+L | `u64` | Body length `B` |
-| 32+L | `b[B]` | Body, compressed if the compression byte says so |
+| 6 | `u8` | Flags. Bit 0 set means a signature block follows the body. All other bits reserved and must be `0` |
+| 7 | `u16` | Name length `L`, at most 1024 |
+| 9 | `b[L]` | File name, UTF-8 |
+| 9+L | `u64` | Modification time, seconds since the Unix epoch, UTC |
+| 17+L | `u64` | Original size, before compression |
+| 25+L | `u64` | Body length `B` |
+| 33+L | `b[B]` | Body, compressed if the compression byte says so |
+| 33+L+B | `b[3200]` | *If bit 0 of flags is set:* the signer's public identity |
+| 3233+L+B | `b[3373]` | *If bit 0 of flags is set:* the signature block |
 
 Rules a conforming implementation must follow:
 
@@ -69,6 +72,64 @@ Rules a conforming implementation must follow:
   gzip stream is a decompression bomb.
 - **The recovered length must equal the declared original size.** A mismatch is an
   error, not a warning.
+
+### 2.1 Signatures
+
+Signing is optional. Bit 0 of the flags byte says whether the two blocks at the end are
+present; when it is clear, they are absent entirely and cost nothing.
+
+```
+signed_region = the payload from offset 0 up to and including the body,
+                that is everything before the signer identity
+
+msg = "noisecrypt/v1 payload signature"
+    ‖ signer_public_identity(3200)
+    ‖ recipient_fingerprint(32)
+    ‖ signed_region
+
+signature = Ed25519.Sign(signer_ed25519_secret, msg)                  // 64 bytes
+          ‖ ML-DSA-65.Sign(signer_mldsa_secret, msg, ctx, hedged)     // 3309 bytes
+
+ctx = "noisecrypt/v1 payload signature"
+```
+
+Both signatures are always produced and **both must verify**. There is deliberately no
+mode that accepts one of the two: a verifier that would settle for the classical
+signature alone has discarded the reason for having the other.
+
+Three parts of `msg` are load-bearing and each closes a specific attack.
+
+**The domain separator.** ML-DSA takes a context string natively; Ed25519 has no such
+parameter, so the separator is also prepended to the message. Without it, an Ed25519
+signature made here could be replayed as a signature made by any other protocol using
+the same key over the same bytes.
+
+**The signer's own identity.** A signed payload carries the signer's public identity so
+the verifier knows whose key to check, and that identity holds four keys: two for
+signing and two for encryption. Only the signing pair takes part in verification, so
+without this term the *encryption* keys inside the claimed identity are covered by
+nothing. An attacker can swap them, keep the signature valid, and a verifier composing
+a reply from the identity in the container would encrypt it to the attacker. This was
+found by bit-flipping every byte of a signed payload, not by reading the code.
+
+**The recipient's fingerprint.** Without it the construction has a hole known as
+surreptitious forwarding. Alice signs a payload and encrypts it to Bob; Bob decrypts,
+keeps the still-valid signed payload, and re-encrypts it to Charlie, who sees a payload
+signed by Alice and addressed to him. Binding the fingerprint makes Charlie's
+verification fail. In passphrase mode the fingerprint is 32 zero bytes: there is no
+recipient, and therefore no recipient to redirect the container towards.
+
+Reader obligations specific to signatures:
+
+1. **A signature that is present must verify.** A failure is fatal, never a warning.
+   If a broken signature were tolerated, stripping one would be as effective as forging
+   one.
+2. **A signature that is absent is not an error**, because signing is optional.
+   Requiring that a container *be* signed is the caller's decision, since only the
+   caller knows whether it asked for one.
+3. **Reject unknown flag bits** rather than ignoring them.
+4. A payload whose flags claim a signature but which is too short to hold one is
+   malformed, not unsigned.
 
 ## 3. Encrypted stream (`NCR1`)
 
@@ -126,11 +187,25 @@ Defaults when writing: 3 passes, 128 MiB, 4 lanes.
 | 63 | `b[32]` | Ephemeral X25519 public key |
 | 95 | `b[1088]` | ML-KEM-768 ciphertext |
 
-A public identity is `X25519 public key ‖ ML-KEM-768 encapsulation key`, 32 + 1184 =
-1216 bytes, rendered as `noisecrypt-public-v1:` followed by unpadded base64url.
+An identity carries four public keys, two for encryption and two for signing, one
+classical and one post-quantum in each pair. Encryption keys cannot sign, so signatures
+required their own pair rather than reusing the existing one.
 
-A private identity is `X25519 scalar ‖ ML-KEM-768 seed`, 32 + 64 = 96 bytes, rendered
-with the `noisecrypt-secret-v1:` prefix. The public half is always **recomputed** from
+A public identity is `X25519 ‖ ML-KEM-768 encapsulation ‖ Ed25519 ‖ ML-DSA-65`, that is
+32 + 1184 + 32 + 1952 = **3200 bytes**, rendered as `noisecrypt-public-v1:` followed by
+unpadded base64url, which comes to 4288 characters.
+
+A private identity is `X25519 scalar ‖ ML-KEM-768 seed ‖ Ed25519 seed ‖ ML-DSA-65 seed`,
+that is 32 + 64 + 32 + 32 = **160 bytes**, rendered with the `noisecrypt-secret-v1:`
+prefix. Seeds rather than expanded keys: an ML-DSA-65 private key is 4032 bytes
+unpacked and 32 as a seed, and expansion is deterministic.
+
+Every component has a size fixed by its algorithm, so identities are fixed width with
+no length prefixes. That is also what makes a layout mismatch fail loudly: an identity
+from a different layout cannot be the right length, so it is rejected outright rather
+than misparsed.
+
+The public half is always **recomputed** from
 the secret on load, never read from the stored blob, so a tampered key file cannot
 make a receiver advertise a public key that does not match its secret.
 

@@ -74,6 +74,7 @@ func runSeal(env *Env, args []string) error {
 	out := fs.String("out", "", "container to write (default: the input name with .ncry appended)")
 	to := fs.String("to", "", "recipient public identity, or a file containing one; omit to seal with a passphrase")
 	noCompress := fs.Bool("no-compress", false, "skip compression (use for already-compressed input)")
+	signWith := fs.String("sign", "", "sign the container with this private identity, or a file containing one")
 	chunk := fs.Uint("chunk-size", uint(crypt.DefaultChunkSize), "plaintext bytes per encrypted chunk")
 	kdfTime := fs.Uint("kdf-time", uint(crypt.DefaultArgonTime), "Argon2id passes (passphrase mode)")
 	kdfMemory := fs.Uint("kdf-memory", uint(crypt.DefaultArgonMemory), "Argon2id memory in KiB (passphrase mode)")
@@ -89,55 +90,17 @@ func runSeal(env *Env, args []string) error {
 		return errors.New("-in is required")
 	}
 
-	data, err := readInput(*in)
+	if _, err := narrow[uint32]("chunk-size", *chunk, math.MaxUint32); err != nil {
+		return err
+	}
+	kdf, err := kdfFromFlags(*kdfTime, *kdfMemory, *kdfLanes)
 	if err != nil {
 		return err
 	}
 
-	info, err := os.Stat(*in)
-	if err != nil {
-		return err
-	}
-
-	compression := container.CompressionGzip
-	if *noCompress {
-		compression = container.CompressionNone
-	}
-	packed, err := container.Pack(container.Metadata{
-		Name:        filepath.Base(*in),
-		ModTime:     info.ModTime(),
-		Compression: compression,
-	}, data)
-	if err != nil {
-		return err
-	}
-
-	chunkSize, err := narrow[uint32]("chunk-size", *chunk, math.MaxUint32)
-	if err != nil {
-		return err
-	}
-
-	opts := crypt.SealOptions{ChunkSize: chunkSize}
-	if *to != "" {
-		recipient, err := resolveRecipient(*to)
-		if err != nil {
-			return err
-		}
-		opts.Recipient = &recipient
-	} else {
-		kdf, err := kdfFromFlags(*kdfTime, *kdfMemory, *kdfLanes)
-		if err != nil {
-			return err
-		}
-		p, err := pass.resolve(env, "Passphrase: ")
-		if err != nil {
-			return err
-		}
-		opts.Passphrase = p
-		opts.KDF = kdf
-	}
-
-	sealed, err := crypt.Seal(packed, opts)
+	sealed, plainSize, err := sealFile(env, *in, sealOptions{
+		to: *to, signWith: *signWith, noCompress: *noCompress, kdf: kdf,
+	}, pass)
 	if err != nil {
 		return err
 	}
@@ -151,8 +114,8 @@ func runSeal(env *Env, args []string) error {
 	}
 
 	fmt.Fprintf(env.Stdout, "Sealed %s (%s) into %s (%s).\n",
-		*in, humanBytes(int64(len(data))), target, humanBytes(int64(len(sealed))))
-	reportVideoCost(env, int64(len(data)), int64(len(sealed)))
+		*in, humanBytes(plainSize), target, humanBytes(int64(len(sealed))))
+	reportVideoCost(env, plainSize, int64(len(sealed)))
 	return nil
 }
 
@@ -161,6 +124,8 @@ func runOpen(env *Env, args []string) error {
 	in := fs.String("in", "", "container to decrypt (required)")
 	out := fs.String("out", "", "file to write (default: the name stored inside the container)")
 	identity := fs.String("identity", "", "private identity, or a file containing one")
+	from := fs.String("from", "", "require that the container be signed by this public identity")
+	requireSig := fs.Bool("require-signature", false, "refuse a container that carries no signature")
 	force := fs.Bool("force", false, "overwrite the output file if it already exists")
 	pass := &passphraseSource{}
 	pass.register(fs)
@@ -177,36 +142,9 @@ func runOpen(env *Env, args []string) error {
 		return err
 	}
 
-	header, _, err := crypt.ParseHeader(sealed)
-	if err != nil {
-		return err
-	}
-
-	var opts crypt.OpenOptions
-	switch header.Mode {
-	case crypt.ModeHybrid:
-		if *identity == "" {
-			return errors.New("this container is sealed to an identity; pass -identity")
-		}
-		id, err := resolveIdentity(*identity)
-		if err != nil {
-			return err
-		}
-		opts.Identity = id
-	default:
-		p, err := pass.resolve(env, "Passphrase: ")
-		if err != nil {
-			return err
-		}
-		opts.Passphrase = p
-	}
-
-	payload, err := crypt.Open(sealed, opts)
-	if err != nil {
-		return err
-	}
-
-	meta, data, err := container.Unpack(payload)
+	opened, err := openSealed(env, sealed, openOptions{
+		identity: *identity, from: *from, requireSignature: *requireSig,
+	}, pass)
 	if err != nil {
 		return err
 	}
@@ -215,19 +153,21 @@ func runOpen(env *Env, args []string) error {
 	if target == "" {
 		// The stored name is already sanitised to a base name by the container
 		// layer, so it cannot escape the current directory.
-		target = meta.Name
+		target = opened.Name
 	}
-	if err := writeOutput(target, data, *force, 0o600); err != nil {
+	if err := writeOutput(target, opened.Data, *force, 0o600); err != nil {
 		return err
 	}
 
-	if !meta.ModTime.IsZero() {
+	if !opened.ModTime.IsZero() {
 		// Best effort: failing to restore a timestamp is not worth failing the
 		// whole extraction over.
-		_ = os.Chtimes(target, meta.ModTime, meta.ModTime)
+		_ = os.Chtimes(target, opened.ModTime, opened.ModTime)
 	}
 
-	fmt.Fprintf(env.Stdout, "Recovered %s (%s) from %s.\n", target, humanBytes(int64(len(data))), *in)
+	fmt.Fprintf(env.Stdout, "Recovered %s (%s) from %s.\n",
+		target, humanBytes(int64(len(opened.Data))), *in)
+	reportSigner(env, opened)
 	return nil
 }
 

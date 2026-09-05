@@ -213,7 +213,10 @@ func TestPathTraversalCannotSurviveAContainer(t *testing.T) {
 			t.Fatalf("Pack: %v", err)
 		}
 	}
-	copy(packed[8:8+len(hostile)], hostile)
+	// The stored name starts right after the fixed prefix: magic, version,
+	// compression, flags, name length.
+	const nameOffset = 4 + 1 + 1 + 1 + 2
+	copy(packed[nameOffset:nameOffset+len(hostile)], hostile)
 
 	meta, _, err := Unpack(packed)
 	if err != nil {
@@ -279,8 +282,10 @@ func TestDecompressionBombIsRefused(t *testing.T) {
 
 	// Rewrite the declared original size to something tiny, leaving the real
 	// eight-megabyte gzip body in place.
-	nameLen := len("bomb.bin")
-	off := 8 + nameLen + 8 // magic+version+compression+namelen, name, modtime
+	// magic, version, compression, flags, name length, then the name, then the
+	// modification time. The declared original size follows.
+	const fixedPrefix = 4 + 1 + 1 + 1 + 2
+	off := fixedPrefix + len("bomb.bin") + 8
 	for i := range 8 {
 		packed[off+i] = 0
 	}

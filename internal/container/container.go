@@ -20,6 +20,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/bzhzion/noisecrypt/internal/crypt"
 )
 
 // Magic identifies the inner payload format. It is never visible in a sealed
@@ -60,6 +62,26 @@ var (
 	// version or compression this build does not implement.
 	ErrUnsupportedPayload = errors.New("container: unsupported payload")
 )
+
+// flagSigned marks a payload that carries a signature block.
+const flagSigned = 1 << 0
+
+// PackOptions configures packing. Signing is opt-in: leave Signer nil and the payload
+// carries no signature block at all, which is the default and costs nothing.
+type PackOptions struct {
+	Metadata
+
+	// Signer, when set, signs the payload. The signature and the signer's public
+	// identity travel inside the ciphertext, so only the recipient learns who sent
+	// the container. Putting them outside would tell every observer.
+	Signer *crypt.PrivateIdentity
+
+	// Recipient is the fingerprint bound into the signature, closing surreptitious
+	// forwarding: a recipient cannot re-encrypt a still-valid signed payload to a
+	// third party and have it verify there. Zero in passphrase mode, where there is
+	// no recipient to redirect the container towards.
+	Recipient [crypt.FingerprintSize]byte
+}
 
 // Metadata describes the encoded file. Every field here is confidential.
 type Metadata struct {
@@ -167,6 +189,17 @@ func SanitiseName(name string) string {
 // unavoidable, and the bandwidth saved is the difference between a usable tool and
 // an unusable one.
 func Pack(meta Metadata, data []byte) ([]byte, error) {
+	return PackWith(PackOptions{Metadata: meta}, data)
+}
+
+// PackWith builds the plaintext payload, optionally signed.
+//
+// The signature covers everything before it: the magic, the version, the compression
+// byte, the name, the timestamps and the body. Signing only the body would leave the
+// metadata swappable, so a container could keep a valid signature while claiming a
+// different file name.
+func PackWith(opts PackOptions, data []byte) ([]byte, error) {
+	meta := opts.Metadata
 	meta.Name = SanitiseName(meta.Name)
 	meta.OriginalSize = uint64(len(data))
 
@@ -191,9 +224,14 @@ func Pack(meta Metadata, data []byte) ([]byte, error) {
 	nameBytes := []byte(meta.Name)
 	modTime := meta.ModTime.UTC().Unix()
 
-	out := make([]byte, 0, 4+1+1+2+len(nameBytes)+8+8+8+len(body))
+	var flags byte
+	if opts.Signer != nil {
+		flags |= flagSigned
+	}
+
+	out := make([]byte, 0, 4+1+1+1+2+len(nameBytes)+8+8+8+len(body))
 	out = append(out, Magic...)
-	out = append(out, Version, byte(compression))
+	out = append(out, Version, byte(compression), flags)
 	out = binary.BigEndian.AppendUint16(out, uint16(len(nameBytes)))
 	out = append(out, nameBytes...)
 	out = binary.BigEndian.AppendUint64(out, uint64(modTime))
@@ -201,20 +239,63 @@ func Pack(meta Metadata, data []byte) ([]byte, error) {
 	out = binary.BigEndian.AppendUint64(out, uint64(len(body)))
 	out = append(out, body...)
 
+	if opts.Signer == nil {
+		return out, nil
+	}
+
+	sig, err := crypt.Sign(out, opts.Recipient, opts.Signer)
+	if err != nil {
+		return nil, err
+	}
+	out = append(out, opts.Signer.Public.Bytes()...)
+	out = append(out, sig...)
 	return out, nil
 }
 
-// Unpack is the inverse of Pack.
+// Opened is the result of unpacking: the metadata, the file, and who signed it.
+type Opened struct {
+	Metadata
+	Data []byte
+
+	// Signer is set only when the payload carried a valid signature. A nil Signer
+	// means the container was unsigned, which is not an error: signing is optional.
+	// A container whose signature is *present and invalid* never reaches here at all.
+	Signer *crypt.PublicIdentity
+}
+
+// Unpack is the inverse of Pack, ignoring any signature.
+//
+// Kept for callers that genuinely do not care who sent something. Anything that
+// reports provenance to a user should call Open instead, so that a present-but-broken
+// signature cannot be silently discarded.
 func Unpack(payload []byte) (Metadata, []byte, error) {
-	const fixedPrefix = 4 + 1 + 1 + 2
+	o, err := Open(payload, [crypt.FingerprintSize]byte{})
+	if err != nil {
+		return Metadata{}, nil, err
+	}
+	return o.Metadata, o.Data, nil
+}
+
+// Open unpacks a payload and verifies its signature if it has one.
+//
+// The policy, which is the part worth being deliberate about: a signature that is
+// present must verify, and a failure here is fatal. A signature that is absent is not
+// an error, because signing is optional. Those two rules together are what make the
+// feature worth anything; if a broken signature were a warning, stripping it would be
+// as good as forging it.
+//
+// Requiring that a container *be* signed is the caller's decision, not this function's,
+// because only the caller knows whether it asked for one.
+func Open(payload []byte, recipient [crypt.FingerprintSize]byte) (Opened, error) {
+	const fixedPrefix = 4 + 1 + 1 + 1 + 2
 	if len(payload) < fixedPrefix {
-		return Metadata{}, nil, fmt.Errorf("%w: %d bytes is shorter than the prefix", ErrMalformedPayload, len(payload))
+		return Opened{}, fmt.Errorf("%w: %d bytes is shorter than the prefix", ErrMalformedPayload, len(payload))
 	}
 	if string(payload[:4]) != Magic {
-		return Metadata{}, nil, fmt.Errorf("%w: bad magic", ErrMalformedPayload)
+		return Opened{}, fmt.Errorf("%w: bad magic", ErrMalformedPayload)
 	}
 	if payload[4] != Version {
-		return Metadata{}, nil, fmt.Errorf("%w: payload version %d, this build reads %d",
+		return Opened{}, fmt.Errorf("%w: payload version %d, this build reads %d",
 			ErrUnsupportedPayload, payload[4], Version)
 	}
 
@@ -222,16 +303,45 @@ func Unpack(payload []byte) (Metadata, []byte, error) {
 	switch compression {
 	case CompressionNone, CompressionGzip:
 	default:
-		return Metadata{}, nil, fmt.Errorf("%w: compression %d", ErrUnsupportedPayload, compression)
+		return Opened{}, fmt.Errorf("%w: compression %d", ErrUnsupportedPayload, compression)
 	}
 
-	nameLen := int(binary.BigEndian.Uint16(payload[6:8]))
+	flags := payload[6]
+	if flags&^byte(flagSigned) != 0 {
+		return Opened{}, fmt.Errorf("%w: unknown payload flags %#x", ErrUnsupportedPayload, flags)
+	}
+
+	// Split the signature block off before parsing anything else, so the rest of the
+	// parser sees exactly the bytes the signature covers.
+	signed := payload
+	var signer *crypt.PublicIdentity
+	if flags&flagSigned != 0 {
+		const blockSize = crypt.PublicIdentitySize + crypt.SignatureSize
+		if len(payload) < fixedPrefix+blockSize {
+			return Opened{}, fmt.Errorf("%w: payload claims a signature but is too short", ErrMalformedPayload)
+		}
+		cut := len(payload) - blockSize
+		signed = payload[:cut]
+		block := payload[cut:]
+
+		id, err := crypt.ParsePublicIdentityBytes(block[:crypt.PublicIdentitySize])
+		if err != nil {
+			return Opened{}, err
+		}
+		if err := crypt.Verify(signed, recipient, id, block[crypt.PublicIdentitySize:]); err != nil {
+			return Opened{}, err
+		}
+		signer = &id
+	}
+
+	payload = signed
+	nameLen := int(binary.BigEndian.Uint16(payload[7:9]))
 	if nameLen > MaxNameLength {
-		return Metadata{}, nil, fmt.Errorf("%w: name length %d exceeds %d", ErrMalformedPayload, nameLen, MaxNameLength)
+		return Opened{}, fmt.Errorf("%w: name length %d exceeds %d", ErrMalformedPayload, nameLen, MaxNameLength)
 	}
 	rest := payload[fixedPrefix:]
 	if len(rest) < nameLen+24 {
-		return Metadata{}, nil, fmt.Errorf("%w: truncated metadata block", ErrMalformedPayload)
+		return Opened{}, fmt.Errorf("%w: truncated metadata block", ErrMalformedPayload)
 	}
 
 	meta := Metadata{
@@ -246,10 +356,10 @@ func Unpack(payload []byte) (Metadata, []byte, error) {
 	rest = rest[24:]
 
 	if bodyLen > MaxPayloadSize || meta.OriginalSize > MaxPayloadSize {
-		return Metadata{}, nil, fmt.Errorf("%w: declared size exceeds the %d byte ceiling", ErrMalformedPayload, uint64(MaxPayloadSize))
+		return Opened{}, fmt.Errorf("%w: declared size exceeds the %d byte ceiling", ErrMalformedPayload, uint64(MaxPayloadSize))
 	}
 	if uint64(len(rest)) != bodyLen {
-		return Metadata{}, nil, fmt.Errorf("%w: body declares %d bytes, %d are present",
+		return Opened{}, fmt.Errorf("%w: body declares %d bytes, %d are present",
 			ErrMalformedPayload, bodyLen, len(rest))
 	}
 
@@ -261,16 +371,16 @@ func Unpack(payload []byte) (Metadata, []byte, error) {
 		// classic decompression bomb.
 		data, err = gzipDecompress(rest, meta.OriginalSize)
 		if err != nil {
-			return Metadata{}, nil, err
+			return Opened{}, err
 		}
 	}
 
 	if uint64(len(data)) != meta.OriginalSize {
-		return Metadata{}, nil, fmt.Errorf("%w: recovered %d bytes, metadata declares %d",
+		return Opened{}, fmt.Errorf("%w: recovered %d bytes, metadata declares %d",
 			ErrMalformedPayload, len(data), meta.OriginalSize)
 	}
 
-	return meta, data, nil
+	return Opened{Metadata: meta, Data: data, Signer: signer}, nil
 }
 
 func gzipCompress(data []byte) ([]byte, error) {
