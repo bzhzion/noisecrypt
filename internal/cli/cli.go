@@ -54,10 +54,13 @@ func DefaultEnv() *Env {
 }
 
 var commands = []command{
+	{"encode", "encrypt a file and carry it as video", runEncode},
+	{"decode", "recover a file from a video", runDecode},
 	{"keygen", "generate a hybrid X25519 + ML-KEM-768 identity", runKeygen},
-	{"seal", "encrypt a file into a .ncry container", runSeal},
+	{"seal", "encrypt a file into a .ncry container, without the video step", runSeal},
 	{"open", "decrypt a .ncry container back to the original file", runOpen},
 	{"estimate", "report the video cost of encoding a file, before encoding it", runEstimate},
+	{"simulate", "measure which re-encoding qualities a profile survives", runSimulate},
 	{"profiles", "list the available channel profiles", runProfiles},
 	{"version", "print the version", runVersion},
 }

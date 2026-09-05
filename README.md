@@ -6,11 +6,11 @@ as video.
 Any file goes in: text, Markdown, JSON, PDF, archives, binaries. The format is byte
 oriented and knows nothing about what it carries.
 
-> **Status.** Encryption, container, modulation and error correction are written and
-> tested, including against a simulated noisy channel. What is still missing is the
-> geometry recovery and the FFmpeg plumbing, so today the tool seals and opens `.ncry`
-> containers and tells you what encoding one would cost, but does not yet emit an
-> `.mp4`. See [Roadmap](#roadmap).
+> **Status.** The pipeline works end to end: a file goes in, an `.mp4` comes out, and
+> the file comes back. Verified against real H.264, including a second re-encoding
+> pass. Not yet verified against an actual platform upload, which is the difference
+> between a codec that works and a codec that works where it is aimed. See
+> [Roadmap](#roadmap).
 
 ## Why
 
@@ -120,7 +120,36 @@ Everything is reachable from flags. There is no interactive-only mode, deliberat
 a tool you cannot script is a tool you cannot put in a backup job, a pipeline, or a
 test.
 
-### Seal with a passphrase
+### Carry a file as video
+
+```sh
+noisecrypt encode -in report.pdf -out report.mp4 -profile archive
+noisecrypt decode -in report.mp4 -out report.pdf -profile archive
+```
+
+Encoding encrypts first; there is no mode that does not. `-profile` has to match on
+both sides, and `decode` says so when the video it was given is not the size the
+profile produces.
+
+Requires FFmpeg on the PATH, or in one of the usual installed locations. One of those
+is a glob, because `winget install Gyan.FFmpeg` reports success, adds nothing to PATH,
+creates no shim, and leaves the binary in a directory named after the FFmpeg version.
+
+### Measure a profile instead of trusting it
+
+```sh
+noisecrypt simulate -profile social
+```
+
+Encodes a payload, re-encodes the result at a range of qualities, and reports which
+ones still decode. On the machine this was developed on: `social` decoded at every
+quality down to CRF 42, `archive` decoded at CRF 23 and failed at 28.
+
+These are local re-encodes, not a platform, and a platform also rescales, changes the
+frame rate and crops. Treat the numbers as a lower bound on the damage, which is
+exactly what the command prints under them.
+
+### Seal without the video step
 
 ```sh
 noisecrypt seal -in report.pdf
@@ -202,16 +231,13 @@ Releases are cut from version tags only. Nothing publishes on a branch push.
 
 Ordered by what unblocks the most.
 
-1. **Geometry recovery and FFmpeg muxing**, the two pieces left between the codec and
-   an actual `.mp4`. Corner fiducials to estimate a homography, so a cropped,
-   letterboxed or rescaled video still lands on the right cells.
-2. **`noisecrypt simulate`.** Re-encode a produced video locally at several
-   compression levels and report whether it still decodes. This is what turns the
-   profile table from folklore into measurement, and it is the feature the author
-   most wants to exist.
-3. **Signatures.** ML-DSA-65 paired with Ed25519, same hybrid reasoning as the KEM,
+1. **A real platform upload.** Everything so far is measured against local
+   re-encodes, which is a lower bound. Until a video has been through an actual
+   ingest pipeline and come back, `social` is a profile designed for a channel nobody
+   has observed, and both profiles still report themselves as unverified.
+2. **Signatures.** ML-DSA-65 paired with Ed25519, same hybrid reasoning as the KEM,
    so a container proves who sealed it and not merely that someone could.
-4. **Graphical interface**, on Linux, macOS and Windows. The command line stays the
+3. **Graphical interface**, on Linux, macOS and Windows. The command line stays the
    reference implementation and the interface calls into the same packages; a GUI
    that reimplements the pipeline is a second pipeline to keep correct. The framework
    choice is open and has one hard constraint: it must not force CGO on, because

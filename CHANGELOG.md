@@ -61,6 +61,27 @@ patched by CI at tag time and are never committed with a real version number.
   constant, and `Layout.Overhead` derives the redundancy from the layout, so an
   advertised figure cannot drift away from what the code costs.
 
+- `internal/geometry`: frame drawing and registration. A white quiet zone with a
+  black border inside it, located by four edge scans, rather than fiducials and a
+  homography: a re-encoding pipeline only ever scales, crops and letterboxes, all
+  axis-aligned, so solving for eight degrees of freedom when the channel uses four
+  is more variance for nothing. Amplitude calibration comes from robust percentiles
+  of the cells themselves and costs no frame real estate.
+- `internal/video`: FFmpeg plumbing over a raw greyscale pipe, with no temporary PNG
+  directory. Frame dimensions are probed on read rather than assumed, because a video
+  that has been through a platform comes back at whatever size the platform chose.
+- `internal/codec`: the four layers joined into one pipeline, streaming on the encode
+  side so a 1 600-frame encode does not hold three gigabytes of images.
+- `modem.Whiten`: energy dispersal before modulation. Without it a frame whose bytes
+  begin with zeros draws solid black rows that the registration border cannot be told
+  apart from, which is not hypothetical: the frame header starts with a version byte
+  and a block index of zero, so the first frame of every encode located two rows short.
+- Commands `encode`, `decode` and `simulate`. `simulate` re-encodes a produced video
+  at a range of qualities and reports which ones still decode, which is what turns the
+  profile table from folklore into measurement.
+- CI installs FFmpeg on Linux and Windows and sets `NOISECRYPT_REQUIRE_FFMPEG`, so a
+  broken install fails the job instead of silently skipping every video test.
+
 ### Measured
 
 - Soft demodulation, on the social geometry at a 1.75 percent raw byte error rate:
@@ -69,6 +90,9 @@ patched by CI at tag time and are never committed with a real version number.
   bytes per frame at 114 percent overhead and survives up to 2.8 percent raw byte
   errors; 50 percent carries 81 bytes at 225 percent overhead and survives up to 4.3
   percent. Both figures come from a test that will fail if they regress.
+- Real H.264, measured by `simulate` on this machine: the `social` profile decoded at
+  every quality tested down to CRF 42; `archive` decoded at CRF 18 and 23 and failed
+  at 28. Local re-encodes only, so a lower bound on what a platform does.
 - Confidence ranks corruption about three and a half times better than chance and
   cannot detect it, which is why the CRC exists. The first version of that test
   demanded eighty percent detection and was simply wrong about what soft decisions

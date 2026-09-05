@@ -44,6 +44,14 @@ jobs:
             exit 1
           fi
 
+      - name: Install FFmpeg (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: Install FFmpeg (Windows)
+        if: matrix.os == 'windows-latest'
+        run: choco install ffmpeg --no-progress -y
+
       - name: Vet
         run: go vet ./...
 
@@ -55,6 +63,15 @@ jobs:
         # designed to be concurrent, and a data race in a codec surfaces as
         # corrupted output rather than a crash, which is the hardest kind to trace
         # back to its cause.
+        #
+        # NOISECRYPT_REQUIRE_FFMPEG turns a missing FFmpeg from a skip into a
+        # failure on the two platforms where it was just installed. Without it, a
+        # broken install would leave the whole video path untested and the job
+        # green, which is the exact shape of failure this project exists in reaction
+        # to. macOS is left to skip: brew's FFmpeg build costs several minutes and
+        # its path discovery shares the Unix code path Linux already exercises.
+        env:
+          NOISECRYPT_REQUIRE_FFMPEG: ${{ matrix.os != 'macos-latest' && '1' || '' }}
         run: go test -race ./...
 
   cross-compile:

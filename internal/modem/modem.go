@@ -120,6 +120,32 @@ func (m Modem) Modulate(data []byte, cells int) []byte {
 	return out
 }
 
+// Whiten XORs a frame's bytes with a fixed pseudo-random sequence, in place. It is
+// its own inverse: apply it before modulating and again after demodulating.
+//
+// This is energy dispersal, the same thing every broadcast standard does, and it is
+// not optional here. Without it, a frame whose payload happens to start with a run of
+// zeros draws several rows of solid black cells, and the registration border, which
+// is also solid black, then appears to extend into the data. That is not a corner
+// case invented for a test: the frame header begins with a version byte followed by
+// a block index that is zero for the first block, so the very first frame of every
+// encode had a black run and located two rows short.
+//
+// Two more things fall out of it. A video encoder given a large flat region
+// compresses it almost to nothing and reproduces it with ringing at the edges, which
+// whitening avoids by never producing one. And the amplitude calibration downstream
+// relies on both extreme levels being present in every frame, which a whitened frame
+// guarantees and a structured one does not.
+//
+// The keystream depends on byte position only, never on frame contents, because the
+// decoder has to undo it before it can read the header that would tell it anything
+// about the frame.
+func Whiten(b []byte) {
+	for i := range b {
+		b[i] ^= byte(filler(i) >> 7)
+	}
+}
+
 // filler is a cheap deterministic scrambler. It does not need to be a good hash, it
 // needs to avoid runs, and it must be identical on both sides so a decoder can tell
 // filler from data if it ever needs to.
