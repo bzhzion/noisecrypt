@@ -78,28 +78,79 @@ type Metadata struct {
 	Compression Compression
 }
 
+// FallbackName is used whenever the stored name cannot be made safe.
+const FallbackName = "payload.bin"
+
+// windowsReserved lists the device names Windows resolves before ever touching the
+// filesystem. The reservation applies with any extension too, so CON.txt is just as
+// reserved as CON.
+var windowsReserved = map[string]bool{
+	"con": true, "prn": true, "aux": true, "nul": true,
+	"com0": true, "com1": true, "com2": true, "com3": true, "com4": true,
+	"com5": true, "com6": true, "com7": true, "com8": true, "com9": true,
+	"lpt0": true, "lpt1": true, "lpt2": true, "lpt3": true, "lpt4": true,
+	"lpt5": true, "lpt6": true, "lpt7": true, "lpt8": true, "lpt9": true,
+}
+
 // SanitiseName reduces an arbitrary path to a safe base name.
 //
-// Path traversal through an archive member name is old and still effective: a
-// member called ../../.ssh/authorized_keys is a working exploit against any
-// extractor that trusts the stored name. This runs at both ends, on write so we
-// never store a path, and on read so a container produced by another
-// implementation cannot smuggle one in.
+// Path traversal through an archive member name is old and still effective: a member
+// called ../../.ssh/authorized_keys is a working exploit against any extractor that
+// trusts the stored name. This runs at both ends, on write so we never store a path,
+// and on read so a container produced by another implementation cannot smuggle one in.
+//
+// # Why the Windows rules apply everywhere
+//
+// The three checks below are Windows quirks, and they are applied unconditionally
+// rather than behind a build tag, because the machine that writes a container is not
+// the machine that opens it. Sanitising for the reader's platform means sanitising for
+// the worst one.
+//
+// All three were verified by experiment rather than assumed, and all three previously
+// made this tool report a successful extraction while doing something else:
+//
+//   - A reserved device name (NUL, CON, COM1...) opens the device. The write returns
+//     no error and reports the full byte count, and the file on disk is zero bytes.
+//     Silent, total data loss, announced as a success.
+//   - A colon opens an alternate data stream: "report.txt:hidden" writes the payload
+//     into a stream attached to report.txt, which Explorer and dir show as an empty
+//     file. The data exists and is invisible.
+//   - A trailing dot or space is silently stripped by the filesystem, so the file
+//     lands under a different name than the one the tool just printed.
 func SanitiseName(name string) string {
 	name = strings.ReplaceAll(name, "\\", "/")
 	name = filepath.Base(name)
 	name = strings.TrimSpace(name)
 
+	// Windows strips trailing dots and spaces, so strip them here instead and keep
+	// the reported name equal to the name on disk.
+	name = strings.TrimRight(name, ". ")
+
 	switch name {
 	case "", ".", "..", "/":
-		return "payload.bin"
+		return FallbackName
 	}
-	if strings.ContainsAny(name, "\x00/") {
-		return "payload.bin"
+
+	// Reject the separators and the characters Windows forbids outright. The colon
+	// is the important one: it selects an alternate data stream rather than failing.
+	if strings.ContainsAny(name, "\x00/:*?\"<>|") {
+		return FallbackName
+	}
+	for _, r := range name {
+		if r < 0x20 || r == 0x7F {
+			return FallbackName
+		}
 	}
 	if !utf8.ValidString(name) {
-		return "payload.bin"
+		return FallbackName
 	}
+
+	// A reserved device name is reserved with any extension, so test the stem.
+	stem, _, _ := strings.Cut(name, ".")
+	if windowsReserved[strings.ToLower(stem)] {
+		return FallbackName
+	}
+
 	if len(name) > MaxNameLength {
 		name = name[:MaxNameLength]
 	}

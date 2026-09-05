@@ -3,6 +3,7 @@ package cli
 import (
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -111,7 +112,12 @@ func runSeal(env *Env, args []string) error {
 		return err
 	}
 
-	opts := crypt.SealOptions{ChunkSize: uint32(*chunk)}
+	chunkSize, err := narrow[uint32]("chunk-size", *chunk, math.MaxUint32)
+	if err != nil {
+		return err
+	}
+
+	opts := crypt.SealOptions{ChunkSize: chunkSize}
 	if *to != "" {
 		recipient, err := resolveRecipient(*to)
 		if err != nil {
@@ -119,16 +125,16 @@ func runSeal(env *Env, args []string) error {
 		}
 		opts.Recipient = &recipient
 	} else {
+		kdf, err := kdfFromFlags(*kdfTime, *kdfMemory, *kdfLanes)
+		if err != nil {
+			return err
+		}
 		p, err := pass.resolve(env, "Passphrase: ")
 		if err != nil {
 			return err
 		}
 		opts.Passphrase = p
-		opts.KDF = crypt.KDFParams{
-			Time:   uint32(*kdfTime),
-			Memory: uint32(*kdfMemory),
-			Lanes:  uint8(*kdfLanes),
-		}
+		opts.KDF = kdf
 	}
 
 	sealed, err := crypt.Seal(packed, opts)

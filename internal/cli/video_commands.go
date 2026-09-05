@@ -52,11 +52,12 @@ func runEncode(env *Env, args []string) error {
 		return err
 	}
 
-	sealed, plainSize, err := sealFile(env, *in, *to, *noCompress, pass, crypt.KDFParams{
-		Time:   uint32(*kdfTime),
-		Memory: uint32(*kdfMemory),
-		Lanes:  uint8(*kdfLanes),
-	})
+	kdf, err := kdfFromFlags(*kdfTime, *kdfMemory, *kdfLanes)
+	if err != nil {
+		return err
+	}
+
+	sealed, plainSize, err := sealFile(env, *in, *to, *noCompress, pass, kdf)
 	if err != nil {
 		return err
 	}

@@ -7,6 +7,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/bzhzion/noisecrypt/internal/container"
+	"github.com/bzhzion/noisecrypt/internal/crypt"
 )
 
 // testEnv drives the CLI without touching the real terminal.
@@ -257,8 +260,8 @@ func TestPassphraseFromFile(t *testing.T) {
 func TestPassphraseFileTrailingNewline(t *testing.T) {
 	dir := t.TempDir()
 	src := writeFile(t, dir, "a.txt", []byte("data"))
-	unix := writeFile(t, dir, "unix.txt", []byte("secret\n"))
-	windows := writeFile(t, dir, "windows.txt", []byte("secret\r\n"))
+	unix := writeFile(t, dir, "unix.txt", []byte("un secret assez long\n"))
+	windows := writeFile(t, dir, "windows.txt", []byte("un secret assez long\r\n"))
 	sealed := filepath.Join(dir, "a.ncry")
 	out := filepath.Join(dir, "out.txt")
 
@@ -268,6 +271,84 @@ func TestPassphraseFileTrailingNewline(t *testing.T) {
 	env.run(t, "seal", "-in", src, "-out", sealed, "-passphrase-file", unix,
 		"-kdf-time", "1", "-kdf-memory", "8", "-kdf-lanes", "1")
 	env.run(t, "open", "-in", sealed, "-out", out, "-passphrase-file", windows)
+}
+
+// TestPassphraseFloorAppliesToSealingOnly covers a finding from the 2026-09-05 audit.
+// A one-character passphrase used to be accepted silently, which makes the Argon2id
+// cost irrelevant: a work factor multiplies the price of searching a keyspace, it does
+// not create one.
+//
+// The floor must not apply when opening, or a container sealed elsewhere, or before
+// this check existed, would become unreadable.
+func TestPassphraseFloorAppliesToSealingOnly(t *testing.T) {
+	dir := t.TempDir()
+	src := writeFile(t, dir, "note.txt", []byte("data"))
+	short := writeFile(t, dir, "short.txt", []byte("abc"))
+	long := writeFile(t, dir, "long.txt", []byte("une phrase de passe correcte"))
+	sealed := filepath.Join(dir, "a.ncry")
+
+	env := newTestEnv("")
+	env.ReadPassphrase = nil
+
+	// Sealing with a short passphrase must be refused, and must say why.
+	env.runExpectingFailure(t, "seal", "-in", src, "-out", sealed, "-passphrase-file", short,
+		"-kdf-time", "1", "-kdf-memory", "8", "-kdf-lanes", "1")
+	if !strings.Contains(env.stderr.String(), "minimum for sealing") {
+		t.Fatalf("the refusal does not explain itself: %s", env.stderr)
+	}
+	if _, err := os.Stat(sealed); err == nil {
+		t.Fatal("a container was written despite the refusal")
+	}
+
+	// A long one goes through.
+	env.run(t, "seal", "-in", src, "-out", sealed, "-passphrase-file", long,
+		"-kdf-time", "1", "-kdf-memory", "8", "-kdf-lanes", "1")
+
+	// Opening is never subject to the floor. Build a container with a deliberately
+	// short passphrase through the library, then open it through the CLI.
+	legacy := filepath.Join(dir, "legacy.ncry")
+	packed, err := container.Pack(container.Metadata{Name: "old.txt"}, []byte("ancien"))
+	if err != nil {
+		t.Fatalf("Pack: %v", err)
+	}
+	blob, err := crypt.Seal(packed, crypt.SealOptions{
+		Passphrase: []byte("abc"),
+		KDF:        crypt.KDFParams{Time: 1, Memory: 8, Lanes: 1},
+	})
+	if err != nil {
+		t.Fatalf("Seal: %v", err)
+	}
+	if err := os.WriteFile(legacy, blob, 0o600); err != nil {
+		t.Fatalf("writing the container: %v", err)
+	}
+
+	env.run(t, "open", "-in", legacy, "-out", filepath.Join(dir, "old.txt"),
+		"-passphrase-file", short)
+}
+
+// TestFlagsRefuseToTruncate covers the other 2026-09-05 finding. uint8(*flag) wraps
+// silently, so -kdf-lanes 260 became 4 and the container was sealed at a cost the user
+// never asked for and could not notice.
+func TestFlagsRefuseToTruncate(t *testing.T) {
+	dir := t.TempDir()
+	src := writeFile(t, dir, "note.txt", []byte("data"))
+	pass := writeFile(t, dir, "pass.txt", []byte("une phrase de passe correcte"))
+
+	env := newTestEnv("")
+	env.ReadPassphrase = nil
+
+	for _, args := range [][]string{
+		{"-kdf-lanes", "260"},
+		{"-kdf-lanes", "4294967296"},
+	} {
+		full := append([]string{"seal", "-in", src, "-out", filepath.Join(dir, "x.ncry"),
+			"-passphrase-file", pass, "-kdf-time", "1", "-kdf-memory", "8"}, args...)
+		env.stderr.Reset()
+		env.runExpectingFailure(t, full...)
+		if !strings.Contains(env.stderr.String(), "the maximum is") {
+			t.Fatalf("%v was not refused with a bound: %s", args, env.stderr)
+		}
+	}
 }
 
 func TestEstimateReportsEveryProfile(t *testing.T) {

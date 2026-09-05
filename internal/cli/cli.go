@@ -18,7 +18,10 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"math"
 	"os"
+
+	"github.com/bzhzion/noisecrypt/internal/crypt"
 	"strings"
 )
 
@@ -165,4 +168,36 @@ func humanDuration(seconds float64) string {
 
 func trimNewline(b []byte) []byte {
 	return []byte(strings.TrimRight(string(b), "\r\n"))
+}
+
+// narrow converts a flag value to a narrower unsigned type, refusing rather than
+// truncating.
+//
+// The naive `uint8(*flag)` silently wraps: -kdf-lanes 260 becomes 4, and the container
+// is then sealed at a cost the user did not ask for and has no way to notice. The
+// value that ends up in the header is the one the decoder will use, so the mismatch is
+// permanent and invisible. Refusing costs one comparison.
+func narrow[T ~uint8 | ~uint32](name string, v uint, maxValue uint) (T, error) {
+	if v > maxValue {
+		return 0, fmt.Errorf("-%s is %d, the maximum is %d", name, v, maxValue)
+	}
+	return T(v), nil
+}
+
+// kdfFromFlags builds the Argon2id parameters, rejecting values that would not
+// survive the conversion to the widths the header stores them in.
+func kdfFromFlags(timeV, memoryV, lanesV uint) (crypt.KDFParams, error) {
+	t, err := narrow[uint32]("kdf-time", timeV, math.MaxUint32)
+	if err != nil {
+		return crypt.KDFParams{}, err
+	}
+	m, err := narrow[uint32]("kdf-memory", memoryV, math.MaxUint32)
+	if err != nil {
+		return crypt.KDFParams{}, err
+	}
+	l, err := narrow[uint8]("kdf-lanes", lanesV, math.MaxUint8)
+	if err != nil {
+		return crypt.KDFParams{}, err
+	}
+	return crypt.KDFParams{Time: t, Memory: m, Lanes: l}, nil
 }

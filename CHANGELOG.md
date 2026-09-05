@@ -110,6 +110,30 @@ patched by CI at tag time and are never committed with a real version number.
   demanded eighty percent detection and was simply wrong about what soft decisions
   can do.
 
+### Security
+
+Findings from the first full audit (2026-09-05). Semgrep over 82 rules reported four
+hits, all `math/rand` in test files where the determinism is deliberate; everything
+below came from manual review, and all three were verified by experiment before being
+called findings.
+
+- **File names from a container could hit Windows device names and alternate data
+  streams.** Sanitising covered path traversal but not Windows naming, and all three
+  cases made the tool report a successful extraction while doing something else: a
+  reserved name (`NUL`, `CON`, `COM1`, with any extension) wrote 33 bytes without error
+  and left zero on disk; a colon (`report.txt:cache`) wrote the payload into a hidden
+  stream that Explorer shows as an empty file; a trailing dot or space was stripped by
+  the filesystem so the file did not have the announced name. Now rejected, on every
+  platform, because the machine that seals is not the machine that opens.
+- **No minimum passphrase length when sealing.** A one-character passphrase was accepted
+  silently, which makes the Argon2id cost irrelevant: a work factor multiplies the price
+  of searching a keyspace, it does not create one. A floor of 8 bytes now applies to
+  sealing only, never to opening, so containers made elsewhere still open.
+- **Silent integer truncation on command line flags.** `uint8(*kdfLanes)` wrapped, so
+  `-kdf-lanes 260` became 4 and the container was sealed at a cost the user never asked
+  for and could not notice, with the wrong value written permanently into the header.
+  The conversion now refuses instead of truncating.
+
 ### Changed
 
 - Profiles no longer declare their own redundancy. `Redundancy` became a method that

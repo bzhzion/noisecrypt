@@ -37,6 +37,19 @@ func (s *passphraseSource) register(fs interface {
 // ErrNoPassphrase is returned when a passphrase is required and none could be read.
 var ErrNoPassphrase = errors.New("no passphrase supplied")
 
+// MinPassphraseLength is the floor enforced when sealing.
+//
+// The Argon2id cost does not save a short passphrase. Three passes over 128 MiB makes
+// each guess expensive, but "a" is one guess: the work factor multiplies the cost of
+// searching a keyspace, and a keyspace of a few hundred candidates stays trivial no
+// matter what it is multiplied by. A tool that advertises post-quantum key exchange
+// and then accepts a one-character passphrase without a word is not being honest
+// about what protects the data.
+//
+// The floor applies when sealing only. Opening never enforces it, because a container
+// made elsewhere, or made before this check existed, must still open.
+const MinPassphraseLength = 8
+
 // resolve returns the passphrase, prompting on the terminal as a last resort.
 //
 // There is deliberately no --passphrase flag. A passphrase on the command line
@@ -61,21 +74,21 @@ func (s *passphraseSource) resolve(env *Env, prompt string) ([]byte, error) {
 		if err != nil {
 			return nil, fmt.Errorf("reading the passphrase from standard input: %w", err)
 		}
-		return nonEmpty(trimNewline(b))
+		return s.accept(trimNewline(b))
 
 	case s.file != "":
 		b, err := os.ReadFile(s.file)
 		if err != nil {
 			return nil, fmt.Errorf("reading the passphrase file: %w", err)
 		}
-		return nonEmpty(trimNewline(b))
+		return s.accept(trimNewline(b))
 
 	case s.env != "":
 		v, ok := os.LookupEnv(s.env)
 		if !ok {
 			return nil, fmt.Errorf("environment variable %s is not set", s.env)
 		}
-		return nonEmpty([]byte(v))
+		return s.accept([]byte(v))
 	}
 
 	if env.ReadPassphrase == nil {
@@ -85,8 +98,8 @@ func (s *passphraseSource) resolve(env *Env, prompt string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(first) == 0 {
-		return nil, ErrNoPassphrase
+	if _, err := s.accept(first); err != nil {
+		return nil, err
 	}
 	if !s.confirm {
 		return first, nil
@@ -102,9 +115,16 @@ func (s *passphraseSource) resolve(env *Env, prompt string) ([]byte, error) {
 	return first, nil
 }
 
-func nonEmpty(b []byte) ([]byte, error) {
+// accept applies the length floor. The floor is tied to s.confirm, which is set only
+// when sealing: opening must accept whatever the container was made with.
+func (s *passphraseSource) accept(b []byte) ([]byte, error) {
 	if len(b) == 0 {
 		return nil, ErrNoPassphrase
+	}
+	if s.confirm && len(b) < MinPassphraseLength {
+		return nil, fmt.Errorf("passphrase is %d bytes, the minimum for sealing is %d; "+
+			"the Argon2id cost multiplies the price of searching a keyspace, it does not create one",
+			len(b), MinPassphraseLength)
 	}
 	return b, nil
 }

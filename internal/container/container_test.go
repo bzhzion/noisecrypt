@@ -116,6 +116,64 @@ func TestMetadataNeverAppearsInCleartext(t *testing.T) {
 	}
 }
 
+// TestSanitiseNameRejectsWindowsTraps covers three behaviours found by experiment
+// during the 2026-09-05 audit, each of which made the tool report a successful
+// extraction while doing something else entirely.
+//
+// They are checked on every platform on purpose: the machine that writes a container
+// is not the machine that opens it, so the reader has to sanitise for the worst
+// target, not for its own.
+func TestSanitiseNameRejectsWindowsTraps(t *testing.T) {
+	cases := map[string]string{
+		// Reserved device names: the write succeeds, reports the full byte count,
+		// and leaves zero bytes on disk.
+		"NUL":     "device name, silently discards the payload",
+		"nul":     "device names are case insensitive",
+		"CON":     "device name",
+		"COM1":    "device name",
+		"LPT9":    "device name",
+		"NUL.txt": "reserved with any extension too",
+
+		// Alternate data stream: the payload lands in a hidden stream and the
+		// visible file shows as empty.
+		"report.txt:hidden": "alternate data stream",
+		":stream":           "alternate data stream",
+
+		// Characters Windows forbids, which fail or behave oddly rather than
+		// producing the named file.
+		"a<b":    "forbidden character",
+		"a|b":    "forbidden character",
+		"a\"b":   "forbidden character",
+		"a\x1fb": "control character",
+	}
+
+	for in, why := range cases {
+		if got := SanitiseName(in); got != FallbackName {
+			t.Errorf("SanitiseName(%q) = %q, expected the fallback (%s)", in, got, why)
+		}
+	}
+
+	// Trailing dots and spaces are stripped rather than rejected, so the name the
+	// tool prints is the name that lands on disk.
+	for in, want := range map[string]string{
+		"trailing.":    "trailing",
+		"trailing...":  "trailing",
+		"trailing ":    "trailing",
+		"trailing . .": "trailing",
+	} {
+		if got := SanitiseName(in); got != want {
+			t.Errorf("SanitiseName(%q) = %q, want %q", in, got, want)
+		}
+	}
+
+	// And the ordinary cases must still survive all of that.
+	for _, ok := range []string{"report.pdf", "notes.md", "étoile.txt", "console.log", "communication.txt"} {
+		if got := SanitiseName(ok); got != ok {
+			t.Errorf("SanitiseName(%q) = %q, a legitimate name was rejected", ok, got)
+		}
+	}
+}
+
 func TestSanitiseName(t *testing.T) {
 	cases := map[string]string{
 		"report.pdf":                   "report.pdf",
