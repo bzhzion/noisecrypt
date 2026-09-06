@@ -150,6 +150,31 @@ func TestButtonsDeclareTheirRole(t *testing.T) {
 	}
 }
 
+// Two regressions the layout actually had, both invisible at desktop width.
+//
+// The tab bar was four items across inside `overflow: hidden`, and flex items refuse to
+// shrink below their own text: at 320 CSS pixels the row measured 316 px inside a 273 px
+// box and the last tab was clipped away in silence. And the body copy was set in
+// absolute pixels while everything around it was in rem, so it alone ignored both the
+// browser's zoom and the reader's default font size.
+//
+// Neither is provable from a stylesheet alone, so these check the specific mistake
+// rather than the property. The property was checked by driving a browser at 320, 360,
+// 480, 544, 560, 768 and 1280, and again at 200 percent.
+func TestLayoutSurvivesNarrowScreens(t *testing.T) {
+	css := asset(t, "app.css")
+
+	if !regexp.MustCompile(`nav\s*\{[^}]*flex-wrap:\s*wrap`).MatchString(css) {
+		t.Error("the tab bar does not wrap, and it sits inside overflow:hidden, so a tab that does not fit disappears without a trace")
+	}
+	if !strings.Contains(css, "@media (max-width:") {
+		t.Error("no width breakpoint at all; the header and the tab bar both commit to a fixed column count")
+	}
+	if regexp.MustCompile(`body\s*\{[^}]*font:\s*\d+px`).MatchString(css) {
+		t.Error("the body font size is absolute, so it ignores the reader's own font size preference")
+	}
+}
+
 func attr(tag, name string) string {
 	m := regexp.MustCompile(name + `="([^"]*)"`).FindStringSubmatch(tag)
 	if m == nil {

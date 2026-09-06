@@ -72,6 +72,22 @@ rather than admiring it.
   instead. That region is focusable, which is the part usually forgotten: a scroll
   container nobody can focus is one nobody can scroll without a mouse.
 - The compression checkbox was 13 px, under the 24 px floor of WCAG 2.2 AA 2.5.8.
+- **A tab was being eaten at narrow widths, silently.** The bar was four items across
+  inside `overflow: hidden`, which was there so the corner radius would cut the buttons,
+  and flex items refuse to shrink below their own text: at 320 CSS pixels the row
+  measured 316 px inside a 273 px box and the last tab was clipped away with nothing on
+  screen to say so. It now wraps two by two, stated in a breakpoint rather than left to
+  emerge from the available width, which had produced a three-plus-one at 480 px with the
+  fourth tab stretched alone across its own row. Sideways scrolling was rejected: it
+  hides content behind a gesture instead of behind a clip.
+- The header committed to two columns at every width, leaving 16 px between the tagline
+  and the readout on a phone. It stacks below 34rem.
+- **The body copy was set in absolute pixels** while everything around it was in rem, so
+  browser zoom scaled the whole interface and left the reading size behind, and a reader
+  who raises their default font size instead of zooming got nothing. Found by verifying
+  that a zoom test had actually zoomed, rather than trusting that it had.
+- Verified by driving a browser at 320, 360, 480, 544, 560, 768 and 1280, and again at
+  200 percent text zoom, rather than by reading the stylesheet.
 - New `markup_test.go`: labels, tab and panel wiring, headings, keyboard handling and
   button roles, each proved red against the real defect before being kept. One of those
   proofs failed and improved the test: prefixing `ArrowRight` to `XArrowRight` did not

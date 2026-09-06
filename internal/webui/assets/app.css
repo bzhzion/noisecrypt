@@ -44,7 +44,12 @@ body {
   min-height: 100vh;
   background: var(--ink);
   color: var(--paper);
-  font: 14px/1.65 var(--mono);
+  /* rem and not 14px. Everything else on the page is already in rem, so browser zoom
+     scaled the whole interface while the body copy alone stayed put, and a reader who
+     raises their browser's default font size instead of zooming got no change at all
+     from the one declaration that sets the reading size. An absolute unit here quietly
+     overrides a preference the user has already expressed. */
+  font: 0.875rem/1.65 var(--mono);
   font-variant-ligatures: none;
   letter-spacing: 0.01em;
 }
@@ -106,8 +111,16 @@ h1 .noise { color: var(--signal); }
 
 /* Tabs, styled as instrument channel selectors ----------------------------- */
 
+/* The tab bar wraps rather than clipping.
+   It used to be four items across with `overflow: hidden`, which was there so the corner
+   radius would cut the buttons. Flex items refuse to shrink below their own text, so at
+   320 CSS pixels the row measured 316 px inside a 273 px box and the hidden overflow ate
+   the last tab in silence. Nothing on screen said a tab was missing.
+   Wrapping is the right answer rather than sideways scrolling: four short labels fit two
+   by two, and a scrolling tab bar hides content behind a gesture instead of a clip. */
 nav {
   display: flex;
+  flex-wrap: wrap;
   gap: 0;
   margin: 2rem 0 0;
   border: 1px solid var(--rule);
@@ -137,6 +150,35 @@ nav button[aria-selected="true"] {
   background: var(--signal);
   color: var(--ink);
   font-weight: 700;
+}
+
+/* Narrow screens ----------------------------------------------------------
+   Almost the whole layout is fluid and needs no breakpoint: clamp() carries the padding
+   and the headings. The exceptions are the two places that commit to a fixed number of
+   columns, and those are exactly where the layout broke. */
+@media (max-width: 34rem) {
+  /* Two columns of unequal, fixed-content width, side by side, with 16 px between the
+     tagline and the readout at every width because the gap does not scale. Stacked, the
+     tagline gets the whole line and the readout stops crowding it. */
+  header {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+  .readout {
+    text-align: left;
+  }
+
+  /* Two by two, stated rather than left to emerge from the available width. Letting the
+     basis decide produced a three-plus-one at 480 px, with the fourth tab stretched
+     alone across its own row, which reads as a mistake. The minus one pixel is the
+     border between the pair. */
+  nav button { flex: 1 1 calc(50% - 1px); }
+
+  /* Wrapped to two rows, the rule between the rows is missing and the one at the end of
+     the first row points at nothing. Drawn per row instead. */
+  nav button { border-bottom: 1px solid var(--rule); }
+  nav button:nth-child(2n) { border-right: 0; }
+  nav button:nth-last-child(-n + 2) { border-bottom: 0; }
 }
 
 /* Panels ------------------------------------------------------------------ */
