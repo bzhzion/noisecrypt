@@ -29,6 +29,15 @@ import (
 // committed with a real version number: the version lives in the tags.
 var Version = "dev"
 
+// These two are variables rather than direct calls so a test can drive both branches.
+// The real answer to the first depends on the console this process was given, which a
+// test cannot arrange for itself, and the second serves until its listener closes, which
+// a test cannot wait for.
+var (
+	launchedByDoubleClick = LaunchedByDoubleClick
+	openInterface         = runGUI
+)
+
 type command struct {
 	name    string
 	summary string
@@ -72,6 +81,15 @@ var commands = []command{
 // Run dispatches a command line. It returns the process exit code.
 func Run(env *Env, args []string) int {
 	if len(args) == 0 {
+		// Double-clicked in Explorer rather than typed into a shell. Printing usage
+		// into a console that closes a tenth of a second later helps nobody, and this
+		// binary carries a graphical interface, so the obvious gesture should reach it.
+		if launchedByDoubleClick() {
+			fmt.Fprintln(env.Stdout, "Opening the NoiseCrypt interface in your browser.")
+			fmt.Fprintln(env.Stdout, "This window has to stay open while you use it.")
+			fmt.Fprintln(env.Stdout, "\nFor the command line instead, run: noisecrypt -help")
+			return runOrFail(env, openInterface, nil)
+		}
 		usage(env.Stderr)
 		return 2
 	}
@@ -107,6 +125,15 @@ func Run(env *Env, args []string) int {
 	fmt.Fprintf(env.Stderr, "noisecrypt: unknown command %q\n\n", name)
 	usage(env.Stderr)
 	return 2
+}
+
+// runOrFail reports a command's error the same way the dispatch table does.
+func runOrFail(env *Env, run func(*Env, []string) error, args []string) int {
+	if err := run(env, args); err != nil {
+		fmt.Fprintf(env.Stderr, "noisecrypt: %v\n", err)
+		return 1
+	}
+	return 0
 }
 
 func usage(w io.Writer) {

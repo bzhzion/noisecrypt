@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -68,6 +69,70 @@ func TestHelpNamesTheOnlyPrerequisite(t *testing.T) {
 			t.Errorf("the FFmpeg note does not name %q", needs)
 		}
 	}
+}
+
+// Double-clicking the binary in Explorer used to open a black window, print the usage
+// into it, and close before anyone could read a word. The binary carries a graphical
+// interface, so the most natural gesture there is should reach it.
+//
+// The two branches are driven directly because the real condition depends on the console
+// this process was handed, which a test cannot arrange for itself. What is checked here
+// is the decision, not the detection.
+func TestDoubleClickOpensTheInterface(t *testing.T) {
+	previous := launchedByDoubleClick
+	t.Cleanup(func() { launchedByDoubleClick = previous })
+
+	t.Run("from a shell, usage as before", func(t *testing.T) {
+		launchedByDoubleClick = func() bool { return false }
+		stdout, stderr, code := run()
+		if code != 2 {
+			t.Errorf("exited %d, expected 2", code)
+		}
+		if !strings.Contains(stderr, "Commands:") {
+			t.Error("no usage printed")
+		}
+		if strings.Contains(stdout, "interface") {
+			t.Error("a browser was announced to someone who typed the command")
+		}
+	})
+
+	t.Run("double-clicked, the interface is opened", func(t *testing.T) {
+		launchedByDoubleClick = func() bool { return true }
+
+		opened := false
+		previousGUI := openInterface
+		openInterface = func(*Env, []string) error { opened = true; return nil }
+		t.Cleanup(func() { openInterface = previousGUI })
+
+		stdout, stderr, code := run()
+		if !opened {
+			t.Fatal("the interface was never opened, so a double-click still does nothing useful")
+		}
+		if code != 0 {
+			t.Errorf("exited %d, expected 0", code)
+		}
+		if strings.Contains(stderr, "Commands:") {
+			t.Error("usage was printed into a window that closes immediately")
+		}
+		if !strings.Contains(stdout, "-help") {
+			t.Error("the window does not say how to reach the command line instead")
+		}
+	})
+
+	t.Run("a failure to open is reported, not swallowed", func(t *testing.T) {
+		launchedByDoubleClick = func() bool { return true }
+		previousGUI := openInterface
+		openInterface = func(*Env, []string) error { return errors.New("pas de port libre") }
+		t.Cleanup(func() { openInterface = previousGUI })
+
+		_, stderr, code := run()
+		if code == 0 {
+			t.Error("a failed launch exited 0")
+		}
+		if !strings.Contains(stderr, "pas de port libre") {
+			t.Errorf("the reason was not reported: %q", stderr)
+		}
+	})
 }
 
 // An unknown command still has to point somewhere useful, and it must not look like

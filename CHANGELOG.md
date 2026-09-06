@@ -39,6 +39,21 @@
   - Honours `prefers-reduced-motion`, and every colour pair was measured rather than
     eyeballed: 6.39:1 at the lowest, against the 4.5:1 that WCAG 2.2 AA asks for.
 
+- **Double-clicking the binary now opens the interface.** It used to open a black
+  console window, print the usage into it, and close before anyone could read a word,
+  which is the least useful thing a program carrying a graphical interface could do with
+  the most natural gesture there is.
+  - Detected rather than guessed: Explorer creates a fresh console and attaches nobody
+    else to it, so `GetConsoleProcessList` returns exactly one process. A shell that
+    launches the binary is attached to the same console and the count is at least two, so
+    typing `noisecrypt` still prints the usage as before.
+  - Called through a lazy `kernel32` lookup, since `golang.org/x/sys/windows` does not
+    export it and cgo would cost the six-target release matrix.
+  - Windows only, and that is not an oversight: on Linux a binary is not something a file
+    manager runs, and on macOS a double-click leaves a Terminal open with the output still
+    in it, so the problem does not arise. Guessing there would open a browser for someone
+    who wanted the usage.
+
 - The help now names its one prerequisite: `encode`, `decode` and `simulate` shell out to
   FFmpeg and the other seven need nothing installed. A list of commands cannot show that,
   so a user met it as an error instead.
