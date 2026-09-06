@@ -278,6 +278,16 @@ label.inline {
   color: var(--dim);
 }
 
+/* An author rule setting `display` beats the `hidden` attribute, which the browser
+   implements as a `display: none` in its own stylesheet. The rule below sets
+   `display: block` on every file input, so the pickers behind the "Load from a file"
+   buttons were rendering next to them: two file choosers per identity field where there
+   should be one button. Restated here rather than by qualifying each selector, since the
+   next rule to set `display` would reintroduce it. */
+[hidden] {
+  display: none !important;
+}
+
 input[type="file"],
 input[type="password"],
 select,

@@ -39,6 +39,27 @@
   - Honours `prefers-reduced-motion`, and every colour pair was measured rather than
     eyeballed: 6.39:1 at the lowest, against the 4.5:1 that WCAG 2.2 AA asks for.
 
+- **The interface can open a protected identity**, which closes the loop the previous
+  entry opened: `keygen` writes a locked key by default, and until now the page could not
+  read one. The command line and the interface disagreed about what a key file is.
+  - The passphrase field appears **only when the identity in front of it is actually
+    locked**, rather than sitting there permanently. A box that is usually irrelevant is
+    a box people fill in out of habit, and a habit of typing secrets into fields that did
+    not need them is the habit worth not teaching.
+  - It is disabled as well as hidden. A hidden field still submits, so swapping the
+    identity after typing would have sent a passphrase belonging to the previous one.
+  - It is offered on private identity fields only. A public identity is never locked, and
+    a passphrase box under public data invites a secret where none belongs.
+  - Setting a textarea from code fires no `input` event, so loading a key from a file had
+    to ask for the check explicitly. Without that, a locked key arriving from a file
+    looked unlocked and the field never appeared, which is the exact case it exists for.
+  - **A CSS rule was making every hidden file picker visible.** `display: block` on file
+    inputs beats the `hidden` attribute, which browsers implement in their own stylesheet,
+    so each identity field showed two file choosers where it should show one button. Found
+    by looking at the rendered page; no test would have caught it.
+  - Five outcomes pinned: locked with no passphrase, with the wrong one, with the right
+    one, and a plain identity with and without a stray passphrase.
+
 - **A stored identity can be protected by a passphrase, and there is now a default place
   to keep it**, `~/.noisecrypt/identity`, the same path on all three platforms.
   - The order matters and is the whole design. SSH gets away with a well-known directory

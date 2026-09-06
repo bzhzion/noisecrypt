@@ -213,6 +213,46 @@ document.getElementById('form-open').addEventListener('submit', async (event) =>
   }
 });
 
+// Unlocking a protected identity -------------------------------------------
+//
+// An identity stored by `noisecrypt keygen` is locked under a passphrase unless someone
+// asked for it not to be, so the interface has to be able to open one or the command line
+// and the page disagree about what a key file is.
+//
+// The field appears only when the identity in front of it actually is locked, rather than
+// sitting there permanently. A passphrase box that is usually irrelevant is a passphrase
+// box people fill in out of habit, and a habit of typing secrets into fields that did not
+// need them is the habit worth not teaching.
+function attachUnlock(box) {
+  const label = document.createElement('label');
+  label.hidden = true;
+  label.textContent = 'Passphrase protecting this identity';
+
+  const input = document.createElement('input');
+  input.type = 'password';
+  input.name = 'identityPassphrase';
+  input.autocomplete = 'current-password';
+  input.hidden = true;
+  input.disabled = true;
+  label.htmlFor = input.id = box.id + '-unlock';
+
+  const review = () => {
+    const locked = box.value.trim().startsWith('noisecrypt-locked-v1:');
+    label.hidden = input.hidden = !locked;
+    // Disabled as well as hidden, so a hidden field never submits a stale value from
+    // an identity the user has since replaced.
+    input.disabled = !locked;
+    if (!locked) input.value = '';
+  };
+
+  box.addEventListener('input', review);
+  box.addEventListener('change', review);
+  box.insertAdjacentElement('afterend', label);
+  label.insertAdjacentElement('afterend', input);
+  review();
+  return review;
+}
+
 // Loading an identity from a file ------------------------------------------
 //
 // The page offered to save a key to a file and then insisted you paste it back by hand
@@ -222,6 +262,10 @@ document.getElementById('form-open').addEventListener('submit', async (event) =>
 // Attached to every field that expects an identity rather than to a list of ids, so a
 // field added later gets it without anyone remembering to wire it up.
 for (const box of document.querySelectorAll('textarea[placeholder^="noisecrypt-"]')) {
+  // Only the private fields can hold a locked identity; a public one never is, and
+  // offering a passphrase box under public data would be inviting a secret where none
+  // belongs.
+  const reviewLock = box.placeholder.startsWith('noisecrypt-secret') ? attachUnlock(box) : null;
   const picker = document.createElement('input');
   picker.type = 'file';
   // No accept filter. Nothing forces an identity to be named .key or .txt, and a filter
@@ -242,6 +286,10 @@ for (const box of document.querySelectorAll('textarea[placeholder^="noisecrypt-"
       // `keygen -out` produced. The server trims too, but a textarea showing a stray
       // blank line looks like a mistake the reader then goes hunting for.
       box.value = (await file.text()).trim();
+      // Setting value from code fires no input event, so the check has to be asked for.
+      // Without this a key loaded from a file looked unlocked and the passphrase field
+      // never appeared, which is exactly the case this whole thing exists for.
+      if (reviewLock) reviewLock();
       confirmOn(button, 'Loaded');
     } catch (err) {
       confirmOn(button, 'Unreadable');

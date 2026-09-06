@@ -133,6 +133,25 @@ type sealRequest struct {
 	// exact failure the signing design set out to prevent.
 	from             string
 	requireSignature bool
+
+	// identityPassphrase unlocks a stored identity that was saved protected. A
+	// different secret from the container's, and asked for separately for the same
+	// reason the command line gives it its own flags: sealing under a passphrase while
+	// signing with a locked identity needs both at once, and one field serving both
+	// would offer the wrong secret to the wrong thing.
+	identityPassphrase string
+}
+
+// privateIdentity reads the identity field, unlocking it when it was stored protected.
+//
+// Both shapes are accepted because both exist on disk: an identity saved before this
+// existed, and one saved since. Telling the caller which it is holding would be work it
+// has no reason to do.
+func (r sealRequest) privateIdentity() (*crypt.PrivateIdentity, error) {
+	if crypt.IsLockedIdentity(r.signWith) && r.identityPassphrase == "" {
+		return nil, fmt.Errorf("this identity is protected; supply its passphrase")
+	}
+	return crypt.UnlockIdentity(r.signWith, []byte(r.identityPassphrase))
 }
 
 func readSealRequest(r *http.Request) (sealRequest, error) {
@@ -163,6 +182,11 @@ func readSealRequest(r *http.Request) (sealRequest, error) {
 
 		from:             strings.TrimSpace(r.FormValue("from")),
 		requireSignature: r.FormValue("requireSignature") == "1",
+
+		// Not trimmed. A passphrase is taken exactly as typed everywhere else in this
+		// tool, and trimming it here would quietly make two different passphrases open
+		// the same file.
+		identityPassphrase: r.FormValue("identityPassphrase"),
 	}, nil
 }
 
@@ -220,7 +244,7 @@ func seal(req sealRequest) ([]byte, int, error) {
 	}
 
 	if req.signWith != "" {
-		signer, err := crypt.ParsePrivateIdentity(req.signWith)
+		signer, err := req.privateIdentity()
 		if err != nil {
 			return nil, http.StatusBadRequest, err
 		}
@@ -269,7 +293,7 @@ func open(req sealRequest, sealed []byte) (container.Opened, int, error) {
 			return container.Opened{}, http.StatusBadRequest,
 				fmt.Errorf("this container is sealed to an identity; supply the private identity")
 		}
-		id, err := crypt.ParsePrivateIdentity(req.signWith)
+		id, err := req.privateIdentity()
 		if err != nil {
 			return container.Opened{}, http.StatusBadRequest, err
 		}
