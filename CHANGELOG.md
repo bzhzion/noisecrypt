@@ -49,11 +49,16 @@ patched by CI at tag time and are never committed with a real version number.
 
 ### Fixed
 
-- Minimum Go raised to **1.26.1**. Adding an HTTP server made fifteen standard library
-  vulnerabilities *reachable* that had never been reachable before, all of them fixed in
-  that release. Worth recording as the moment the dependency scanner paid for itself:
-  nothing in this repository's own code changed for the worse, and the finding was real
-  anyway.
+- Minimum Go raised to **1.26.6**. Adding an HTTP server made fifteen standard library
+  vulnerabilities *reachable* that had never been reachable before: `net/http.Server`
+  pulls a large part of the standard library into the call graph, so govulncheck stopped
+  discounting them. Nothing in this repository's own code changed for the worse, and the
+  finding was real anyway, which is the scanner earning its place.
+  - Recorded because the first attempt got it wrong in an instructive way. The report
+    lists a `Fixed in:` version per vulnerability, and the fix is the **maximum** across
+    all of them, not the first one you read: a bump to 1.26.1 cleared four of the fifteen
+    and the build stayed red. A scanner that reports per-finding requirements needs its
+    output aggregated before it is acted on.
 
 - **Optional digital signatures**, so a container can prove who produced it rather than
   only that somebody knew the recipient's public key. `-sign` when encrypting, `-from`
