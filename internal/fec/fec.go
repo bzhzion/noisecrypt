@@ -449,6 +449,16 @@ func decodeHeaderCopy(b []byte) (header, bool) {
 type ReadFrame struct {
 	Bytes      []byte
 	Confidence []float64
+
+	// Speculative marks a second reading of a frame that has already been offered,
+	// sampled from a different rectangle because the first one looked wrong.
+	//
+	// It changes nothing about how the frame is decoded: it is checked by the same
+	// CRC as any other, and the CRC decides. It only keeps the loss counters honest.
+	// A speculative reading that fails is not a lost frame, it is a guess that did not
+	// pay off, and counting it would make the figure that measures channel damage move
+	// for reasons that have nothing to do with the channel.
+	Speculative bool
 }
 
 // Stats records what a decode had to throw away.
@@ -475,10 +485,17 @@ type Stats struct {
 	// OutOfRange frames named a shard index the layout does not have, or disagreed
 	// with the others about the payload length.
 	OutOfRange int
+
+	// Recovered counts frames that failed as read and then succeeded from a second,
+	// differently framed reading of the same image.
+	Recovered int
 }
 
-// Lost is every frame that contributed nothing.
-func (s Stats) Lost() int { return s.Unparseable + s.Unrepairable + s.OutOfRange }
+// Lost is every frame that contributed nothing, after second readings are taken into
+// account. A frame recovered by re-reading it is not a loss.
+func (s Stats) Lost() int {
+	return max(0, s.Unparseable+s.Unrepairable+s.OutOfRange-s.Recovered)
+}
 
 // Decode reconstructs the payload from whatever frames survived.
 //
@@ -519,16 +536,22 @@ func decode(frames []ReadFrame, l Layout, stats *Stats) ([]byte, error) {
 	for _, f := range frames {
 		h, ok := parseHeader(f.Bytes)
 		if !ok {
-			stats.Unparseable++
+			if !f.Speculative {
+				stats.Unparseable++
+			}
 			continue
 		}
 		shard, ok := recoverShard(f, l, intraEnc)
 		if !ok {
-			stats.Unrepairable++
+			if !f.Speculative {
+				stats.Unrepairable++
+			}
 			continue
 		}
 		if h.shard >= l.InterData+l.InterParity {
-			stats.OutOfRange++
+			if !f.Speculative {
+				stats.OutOfRange++
+			}
 			continue
 		}
 
@@ -548,8 +571,14 @@ func decode(frames []ReadFrame, l Layout, stats *Stats) ([]byte, error) {
 		}
 		if _, dup := blocks[h.block][h.shard]; !dup {
 			blocks[h.block][h.shard] = shard
+			stats.Accepted++
+			if f.Speculative {
+				// A speculative reading only exists because the ordinary one was
+				// offered first and failed, so this cancels that loss rather than
+				// adding to the tally beside it.
+				stats.Recovered++
+			}
 		}
-		stats.Accepted++
 	}
 
 	if !sawLength {

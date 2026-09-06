@@ -156,17 +156,100 @@ func (d *Decoder) Add(img *image.Gray) {
 		d.Unreadable++
 		return
 	}
-	samples, err := geometry.Sample(img, area, d.c.cols, d.c.rows)
-	if err != nil {
+	if !d.read(img, area, false) {
 		d.Unreadable++
 		return
 	}
 
+	// Offer a second reading when the located rectangle is measurably the wrong shape.
+	//
+	// Every frame this codec discarded on a lossless channel turned out to be located
+	// wrongly, and always the same way: a first or last line of data that happened to
+	// be almost entirely dark was indistinguishable from more border and got absorbed
+	// into it, leaving the rectangle exactly one cell short on one edge. Measured on
+	// 1344 frames of `social`, that is seven frames; feeding the decoder the rendered
+	// rectangle instead brought it to zero, which is what makes this the cause rather
+	// than a correlation.
+	//
+	// It is not fixed by moving the 70% threshold. The border really does read at 97%
+	// dark and an unlucky data line at 75%, so they are separable on a frame straight
+	// out of Render, but a platform's blur closes that gap and the threshold exists to
+	// survive the platform. So instead of deciding, offer both and let the CRC decide,
+	// which is the arbiter this codec already trusts everywhere else.
+	for _, alt := range d.reframings(area) {
+		d.read(img, alt, true)
+	}
+}
+
+// read samples one rectangle and queues it. Reports whether it produced anything.
+func (d *Decoder) read(img *image.Gray, area image.Rectangle, speculative bool) bool {
+	samples, err := geometry.Sample(img, area, d.c.cols, d.c.rows)
+	if err != nil {
+		return false
+	}
 	black, white := geometry.Calibrate(samples)
 	data, confidence := d.c.modem.Demodulate(samples, modem.Calibration{Black: black, White: white})
 	modem.Whiten(data) // self-inverse; confidences are per position and unaffected
 
-	d.frames = append(d.frames, fec.ReadFrame{Bytes: data, Confidence: confidence})
+	d.frames = append(d.frames, fec.ReadFrame{
+		Bytes: data, Confidence: confidence, Speculative: speculative,
+	})
+	return true
+}
+
+// reframings proposes rectangles to try when the located one is the wrong shape.
+//
+// Cells are square in a rendered frame and a channel only ever rescales, crops and
+// letterboxes, all axis-aligned, so a correct rectangle gives the same cell size measured
+// across its width as across its height. One swallowed line breaks that by exactly one
+// cell, and the dimension that comes up short says which. Which *edge* was swallowed is
+// not knowable from the shape, so both are offered.
+func (d *Decoder) reframings(area image.Rectangle) []image.Rectangle {
+	cols, rows := d.c.cols, d.c.rows
+	if cols == 0 || rows == 0 || area.Dx() <= 0 || area.Dy() <= 0 {
+		return nil
+	}
+
+	cw := float64(area.Dx()) / float64(cols)
+	ch := float64(area.Dy()) / float64(rows)
+
+	// How short the smaller measurement is, counted in cells. One swallowed line makes
+	// this land near 1; anything far from 1 is a differently shaped problem and not one
+	// this repair understands, so it is left alone.
+	const (
+		near = 0.45 // how close to a whole cell the shortfall must be
+		tiny = 0.08 // below this the two measurements agree and nothing is wrong
+	)
+	switch {
+	case ch > cw:
+		missing := (ch - cw) * float64(cols) / ch
+		if missing < tiny || absf(missing-1) > near {
+			return nil
+		}
+		w := int(ch + 0.5)
+		return []image.Rectangle{
+			image.Rect(area.Min.X-w, area.Min.Y, area.Max.X, area.Max.Y),
+			image.Rect(area.Min.X, area.Min.Y, area.Max.X+w, area.Max.Y),
+		}
+	case cw > ch:
+		missing := (cw - ch) * float64(rows) / cw
+		if missing < tiny || absf(missing-1) > near {
+			return nil
+		}
+		h := int(cw + 0.5)
+		return []image.Rectangle{
+			image.Rect(area.Min.X, area.Min.Y-h, area.Max.X, area.Max.Y),
+			image.Rect(area.Min.X, area.Min.Y, area.Max.X, area.Max.Y+h),
+		}
+	}
+	return nil
+}
+
+func absf(f float64) float64 {
+	if f < 0 {
+		return -f
+	}
+	return f
 }
 
 // Finish reconstructs the payload from everything added so far.

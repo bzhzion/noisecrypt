@@ -11,6 +11,9 @@
 
 # Test and scratch artefacts
 *.mp4
+# Payloads and videos for a platform round trip. The .mp4 rule already covers the videos;
+# this covers the payload beside them, which has no extension anyone would guess.
+/.tiktok/
 *.ncry
 *.test
 /testdata/tmp/

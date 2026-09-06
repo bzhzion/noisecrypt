@@ -140,6 +140,36 @@
   - Verified on a real re-encode round trip and not only in memory: 0 of 32 frames
     unreadable at 1920p and at 426p, CRF 26 and 34.
 
+- **`social` was losing seven frames per encode on a channel that loses nothing**, and
+  nobody knew because the figure that would have shown it did not exist an hour earlier.
+  The new loss counter reported it on its first real use, on a 1344-frame video that had
+  never been near a platform.
+  - The cause was found by an experiment rather than an argument: decode the same frames
+    twice, once letting the geometry find the data area and once handing it the exact
+    rectangle that was rendered. Seven discarded became zero, which makes location the
+    cause rather than a correlate.
+  - Dumping the row statistics of an offending frame settled what two rounds of
+    reasoning had got wrong in two different ways. The border reads at **0.97 dark** and
+    an unlucky first line of data at **0.75**, and the threshold that separates border
+    from data is 0.70, so that line is absorbed into the border and the rectangle ends up
+    exactly one cell short on one edge.
+  - **Not fixed by moving the threshold.** The two are separable on a frame straight out
+    of `Render` and a platform's blur closes the gap; the threshold is low precisely to
+    survive the platform. Bounding the dark run by the observed quiet run fails the same
+    way, on cropped input.
+  - Fixed one level up, where the information exists. Cells are square in a rendered
+    frame and a channel only rescales, crops and letterboxes, so a correct rectangle
+    measures the same cell size across its width as across its height, and one swallowed
+    line breaks that by exactly one cell. `codec.Decoder` knows cols and rows, so it
+    offers the two corrected rectangles as **second readings** and lets the CRC pick —
+    the arbiter this codec already trusts everywhere else, rather than a new constant.
+  - Second readings are flagged, so a guess that does not pay off is not counted as a
+    lost frame. A loss counter that moves for reasons unrelated to the channel is worse
+    than no counter.
+  - Measured end to end on the same video file: **7 discarded before, 0 after**, and both
+    profiles still recover the payload byte for byte. Re-verified against real re-encodes
+    at 1920p, 854p and 426p, CRF 26 through 42: 0 unreadable everywhere.
+
 - **The frame-loss figure was quietly optimistic, and it is the one figure meant to
   reveal a channel getting worse.** Two different losses exist and only one was counted:
   frames the geometry could not *locate*, and frames it located and sampled whose shard

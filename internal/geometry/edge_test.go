@@ -89,33 +89,35 @@ func TestFindEdgeStillRejectsAnEmptyBorder(t *testing.T) {
 //
 // Found by a diagnostic that compared the located rectangle with the rendered one rather
 // than only counting failures, which is the part that had never been looked at.
-// # Why this is skipped rather than fixed
+// # Why this stays skipped although the loss it caused is fixed
 //
-// The obvious fix is a ratio. Render puts the border at exactly `margin/2`, which is
-// exactly the thickness of the quiet zone outside it, and a uniform resize preserves
-// that, so a dark run more than about twice the observed quiet run has overshot into
-// data. It works on a frame straight out of Render.
+// It is not fixed *here*, and deliberately so. Two candidate fixes at this level were
+// considered and both are worse than the defect.
 //
-// It also breaks the case this whole layer exists for. A platform that crops into the
-// quiet zone leaves, say, three lines of quiet against a legitimate fifteen of border,
-// and the ratio then fires on every frame and returns a position that is wrong by
-// design. Trading a fluke that happens once in a few hundred frames for a systematic
-// failure on cropped input is a bad trade.
+// Raising the 70% threshold works on a frame straight out of Render, where the border
+// reads at 97% dark and an unlucky data line at 75%. A platform's blur closes that gap,
+// and the threshold is low precisely to survive the platform.
 //
-// The fix that would hold is one level up, and is not a ratio: the rendered data area has
-// a known aspect ratio of cols to rows, a uniform resize preserves it, and swallowing one
-// line deviates from it by 1/rows, about 1.6% on `social`. `Locate` cannot check that
-// because it is given only an image, but `Sample` already receives cols and rows. So the
-// check belongs there, acting on a measurable inconsistency rather than on a guess about
-// thickness.
+// Bounding the dark run by the observed quiet run also works on a clean frame, since
+// Render makes the border exactly `margin/2`, the same thickness as the quiet zone. It
+// breaks the case this whole layer exists for: a platform that crops into the quiet zone
+// leaves three lines of quiet against a legitimate fifteen of border, and the rule then
+// fires on every frame.
 //
-// Not done here, deliberately. This component is the only one verified against a real
-// platform across ten renditions, the cost of the defect is one frame in a few hundred
-// carrying noise instead of an erasure, and the profile tolerates 2.77% raw byte errors
-// where this is worth around 0.4%. A speculative change to geometry recovery is the
-// riskiest edit in this repository and the local bench cannot price what a platform does.
+// The fix went one level up instead, where the information exists. Cells are square in a
+// rendered frame and a channel only rescales, crops and letterboxes, so a correct
+// rectangle measures the same cell size across its width as across its height, and one
+// swallowed line breaks that by exactly one cell. `Locate` cannot check it, having only
+// an image; `codec.Decoder` knows cols and rows, so it offers the two corrected
+// rectangles as second readings and lets the CRC pick, which is the arbiter this codec
+// already trusts everywhere else. Measured end to end on the same 1344-frame video: seven
+// frames discarded before, none after.
+//
+// So this stays as the record of where the loss originates, and it must keep failing:
+// if `findEdge` ever stops swallowing dark lines, the compensation upstairs becomes dead
+// weight and should be removed rather than kept out of habit.
 func TestFindEdgeDoesNotSwallowAUniformlyDarkFirstLine(t *testing.T) {
-	t.Skip("defaut connu et mesure, correctif concu mais non applique : voir le commentaire ci-dessus")
+	t.Skip("defaut assume ici et compense dans codec.Decoder : voir le commentaire ci-dessus")
 
 	b, d := join(letterbox(10), quiet(15), border(15), allDark(30), mixed(600))
 
