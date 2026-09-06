@@ -64,6 +64,7 @@ var commands = []command{
 	{"open", "decrypt a .ncry container back to the original file", runOpen},
 	{"estimate", "report the video cost of encoding a file, before encoding it", runEstimate},
 	{"simulate", "measure which re-encoding qualities a profile survives", runSimulate},
+	{"gui", "open the graphical interface in your browser", runGUI},
 	{"profiles", "list the available channel profiles", runProfiles},
 	{"version", "print the version", runVersion},
 }

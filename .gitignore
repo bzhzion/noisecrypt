@@ -3,6 +3,11 @@
 /noisecrypt.exe
 /dist/
 /build/
+# Short names used when building a throwaway binary to try something by hand. Listed
+# rather than deleted each time: remembering to clean up is not a strategy.
+/nc
+/nc.exe
+/gui.log
 
 # Test and scratch artefacts
 *.mp4

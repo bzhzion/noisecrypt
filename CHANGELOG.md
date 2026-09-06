@@ -12,6 +12,27 @@ patched by CI at tag time and are never committed with a real version number.
 
 ### Added
 
+- **A graphical interface**, `noisecrypt gui`, which opens a page in your browser and
+  serves it from the binary itself. Encrypt, decrypt and generate identities without a
+  command line. Carrying a container as video is still command line only.
+  - **Served locally rather than drawn natively**, because every Go toolkit that opens a
+    real window links C into the process holding the decrypted private key. A browser is
+    C++ too, and far more of it, but it runs in its own process and never sees a key. The
+    practical dividend is that the interface cross-compiles to the same six targets as
+    the command line, with no C toolchain anywhere.
+  - Bound to `127.0.0.1` on a port the operating system picks, never a fixed one, and
+    never `:0`, which would put the interface on the network.
+  - **Authenticated even though it is local**, because "only local" is not a boundary:
+    any page you visit can send requests to `127.0.0.1`, and DNS rebinding can let it
+    read the replies. Three checks, each closing something different: the `Host` header
+    against rebinding, the `Origin` header against ordinary cross-site requests, and a
+    per-run token compared in constant time. Nobody types the token; the binary opens the
+    browser with it.
+  - Nothing on the page is fetched from anywhere else. A web font would announce, to
+    whoever serves it, that this tool is being used.
+  - Honours `prefers-reduced-motion`, and every colour pair was measured rather than
+    eyeballed: 6.39:1 at the lowest, against the 4.5:1 that WCAG 2.2 AA asks for.
+
 - **Optional digital signatures**, so a container can prove who produced it rather than
   only that somebody knew the recipient's public key. `-sign` when encrypting, `-from`
   or `-require-signature` when decrypting.

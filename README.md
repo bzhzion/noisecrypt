@@ -251,6 +251,25 @@ Three rules are worth knowing because they are what makes the feature mean anyth
 Every feature is a flag, and nothing hides behind an interactive menu. That is on
 purpose: a tool you cannot script is a tool you cannot put in a nightly backup job.
 
+### If you would rather click than type
+
+```sh
+noisecrypt gui
+```
+
+Your browser opens on a page served by the binary itself. Encrypt a file, decrypt one,
+generate an identity. No installation, no account, no configuration.
+
+Three things worth knowing about it. It listens only on your own machine, on a port
+chosen fresh each time, and is not reachable from your network, let alone the internet.
+Nothing on the page is loaded from anywhere else, because a page that fetches a font
+tells whoever serves that font you are using this tool. And it holds a one-time password
+you never have to see: the address the binary opens already carries it, so a page you
+happen to have open in another tab cannot reach in and ask this one to decrypt something.
+
+Carrying a container as video is not in the interface yet; that part is still `encode`
+and `decode` on the command line.
+
 ### Encrypt with a passphrase
 
 ```sh
