@@ -39,6 +39,20 @@
   - Honours `prefers-reduced-motion`, and every colour pair was measured rather than
     eyeballed: 6.39:1 at the lowest, against the 4.5:1 that WCAG 2.2 AA asks for.
 
+- **The tabs were named after the mechanism instead of the result**, and it misled the
+  person who commissioned the tool, which settles the question. "Encrypt" and "Video" read
+  as a choice between secure and not, when the video is encrypted by exactly the same
+  code and differs only in the wrapper. Someone could reasonably conclude the video route
+  skipped the encryption, which is the opposite of the truth.
+  - Now "To a file", "From a file" and "To and from video", with one line under the tab
+    bar saying that both routes encrypt identically and differ only in what you end up
+    holding: a `.ncry`, instant, or an `.mp4`, slow and far larger and only worth it when
+    the channel refuses everything else.
+  - The line sits under the tab bar rather than inside a panel, because the question is
+    about the choice between them and would be invisible from whichever one you are in.
+  - Each step names its output too: "Encrypt a file into a .ncry container" rather than
+    "Encrypt a file".
+
 - **Double-clicking the binary now opens the interface.** It used to open a black
   console window, print the usage into it, and close before anyone could read a word,
   which is the least useful thing a program carrying a graphical interface could do with

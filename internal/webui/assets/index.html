@@ -23,17 +23,27 @@
   </p>
 </header>
 
+<!-- Named after what comes out, not after the mechanism. "Encrypt" and "Video" read as a
+     choice between secure and not, which is the opposite of the truth: the video is
+     encrypted by the same code, it is simply wrapped differently. Someone who
+     commissioned this tool asked what the difference was, which settles it. -->
 <nav role="tablist" aria-label="Sections">
-  <button role="tab" aria-selected="true" aria-controls="panel-seal" id="tab-seal">Encrypt</button>
-  <button role="tab" aria-selected="false" aria-controls="panel-open" id="tab-open">Decrypt</button>
-  <button role="tab" aria-selected="false" aria-controls="panel-video" id="tab-video">Video</button>
+  <button role="tab" aria-selected="true" aria-controls="panel-seal" id="tab-seal">To a file</button>
+  <button role="tab" aria-selected="false" aria-controls="panel-open" id="tab-open">From a file</button>
+  <button role="tab" aria-selected="false" aria-controls="panel-video" id="tab-video">To and from video</button>
   <button role="tab" aria-selected="false" aria-controls="panel-keys" id="tab-keys">Identities</button>
 </nav>
+
+<p class="chooser">
+  Both routes encrypt with the same code. They differ only in what you end up holding:
+  a <b>.ncry</b> file, which is instant, or an <b>.mp4</b>, which is slow and far larger
+  and is only worth it when the channel you are using refuses everything but video.
+</p>
 
 <main>
 
 <section id="panel-seal" role="tabpanel" aria-labelledby="tab-seal">
-  <h2 class="step" data-index="01">Encrypt a file</h2>
+  <h2 class="step" data-index="01">Encrypt a file into a .ncry container</h2>
   <form id="form-seal">
     <label for="seal-file">File</label>
     <input type="file" id="seal-file" name="file" required>
@@ -74,7 +84,7 @@
 </section>
 
 <section id="panel-open" role="tabpanel" aria-labelledby="tab-open" hidden>
-  <h2 class="step" data-index="02">Recover a file</h2>
+  <h2 class="step" data-index="02">Recover a file from a .ncry container</h2>
   <form id="form-open">
     <label for="open-file">Container</label>
     <input type="file" id="open-file" name="file" accept=".ncry" required>
@@ -111,7 +121,7 @@
 <section id="panel-video" role="tabpanel" aria-labelledby="tab-video" hidden>
   <p id="no-ffmpeg" class="warning" hidden></p>
 
-  <h2 class="step" data-index="03">Carry a file as video</h2>
+  <h2 class="step" data-index="03">Encrypt a file and carry it as video</h2>
   <form id="form-encode">
     <label for="enc-file">File</label>
     <input type="file" id="enc-file" name="file" required>

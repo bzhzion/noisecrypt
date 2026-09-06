@@ -181,6 +181,19 @@ nav button[aria-selected="true"] {
   nav button:nth-last-child(-n + 2) { border-bottom: 0; }
 }
 
+/* The line that answers "so what is the difference between these tabs".
+   Sits under the tab bar rather than inside a panel, because the question is about the
+   choice between them and would be invisible from whichever one you are already in. */
+.chooser {
+  margin: 0.9rem 0 0;
+  padding-left: 0.9rem;
+  border-left: 2px solid var(--rule);
+  color: var(--dim);
+  font-size: 0.78rem;
+  line-height: 1.7;
+}
+.chooser b { color: var(--paper); font-weight: 600; }
+
 /* Panels ------------------------------------------------------------------ */
 
 section[role="tabpanel"],
