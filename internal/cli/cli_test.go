@@ -121,8 +121,10 @@ func TestRoundTripHybridViaKeygen(t *testing.T) {
 	src := writeFile(t, dir, "message.txt", data)
 	keyFile := filepath.Join(dir, "identity.key")
 
+	// -no-passphrase, because this test is about the hybrid round trip and not about
+	// key storage. Keygen protects by default now, which its own tests cover.
 	env := newTestEnv("")
-	env.run(t, "keygen", "-out", keyFile)
+	env.run(t, "keygen", "-out", keyFile, "-no-passphrase")
 
 	// The public identity is printed; pull it out of stdout the way a user would
 	// copy it out of their terminal.
@@ -158,7 +160,7 @@ func TestKeygenRefusesToClobber(t *testing.T) {
 	keyFile := writeFile(t, dir, "identity.key", []byte("existing key material"))
 
 	env := newTestEnv("")
-	env.runExpectingFailure(t, "keygen", "-out", keyFile)
+	env.runExpectingFailure(t, "keygen", "-out", keyFile, "-no-passphrase")
 
 	got, err := os.ReadFile(keyFile)
 	if err != nil {
@@ -170,7 +172,7 @@ func TestKeygenRefusesToClobber(t *testing.T) {
 
 	// With -force it must go through, because refusing unconditionally would make
 	// key rotation impossible.
-	env.run(t, "keygen", "-out", keyFile, "-force")
+	env.run(t, "keygen", "-out", keyFile, "-force", "-no-passphrase")
 }
 
 func TestSealRefusesToClobber(t *testing.T) {

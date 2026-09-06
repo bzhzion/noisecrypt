@@ -39,6 +39,40 @@
   - Honours `prefers-reduced-motion`, and every colour pair was measured rather than
     eyeballed: 6.39:1 at the lowest, against the 4.5:1 that WCAG 2.2 AA asks for.
 
+- **A stored identity can be protected by a passphrase, and there is now a default place
+  to keep it**, `~/.noisecrypt/identity`, the same path on all three platforms.
+  - The order matters and is the whole design. SSH gets away with a well-known directory
+    because `ssh-keygen` asks for a passphrase; a predictable location is a convenience
+    when what is found there is locked and an invitation when it is not. So the lock came
+    first: taking the directory without the passphrase would have been taking the half
+    that costs and leaving the half that pays.
+  - **Protected by default**, with `-no-passphrase` to decline, because a protection you
+    have to remember to ask for is one most people will not have.
+  - The locked form is not a new format. It is the container this tool already builds for
+    everything else, holding the identity token as its payload, so the hardening, the
+    AEAD and the header all come from code the rest of the program exercises constantly
+    rather than from a second implementation written for keys alone.
+  - `open` and `decode` consult the stored identity when none is named, which is the
+    point of having a location at all.
+  - **`0o600` was a lie on Windows**, and this is where that surfaced. The mode only
+    controls the read-only attribute there; no access control entry is written, so a key
+    file kept whatever it inherited. Measured on a real key before the change:
+    `SYSTEM`, `Administrators` and the user, all `FullControl`. The code announced a
+    protection it had not applied. Now an explicit owner-only ACL, named by SID rather
+    than by `%USERNAME%`, which needs a shell to expand and got the first attempt
+    rejected outright.
+  - **Two different secrets get two different flags.** A container sealed to an identity
+    needs no passphrase of its own while the identity file may well be locked under one,
+    and sealing under a passphrase while signing with a locked identity needs both at
+    once. One flag serving both would have worked until exactly that command and then
+    offered the wrong secret to the wrong thing, so `-identity-passphrase-file` and
+    `-identity-passphrase-env` stand beside the existing pair.
+  - `keygen` takes those same passphrase sources rather than prompting on its own: a
+    command only a human at a terminal can answer is one no script can use and no test
+    can drive.
+  - Plain identities still read, with or without a passphrase supplied. A tool that
+    cannot read what it wrote last week is a tool that eats keys.
+
 - **An identity could be saved to a file and not loaded from one.** The interface
   offered the save button added just above, then insisted you paste the key back by hand
   the next time: open the file, select all, copy. The command line has taken

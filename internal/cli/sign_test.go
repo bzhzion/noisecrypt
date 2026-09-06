@@ -14,7 +14,10 @@ func keypair(t *testing.T, env *testEnv, dir, name string) (keyFile, pub string)
 	t.Helper()
 	keyFile = filepath.Join(dir, name+".key")
 	env.stdout.Reset()
-	env.run(t, "keygen", "-out", keyFile)
+	// -no-passphrase: these tests are about signatures, not key storage, and an
+	// identity that has to be unlocked would put a passphrase prompt in the middle of
+	// every one of them.
+	env.run(t, "keygen", "-out", keyFile, "-no-passphrase")
 
 	for _, line := range strings.Split(env.stdout.String(), "\n") {
 		if s := strings.TrimSpace(line); strings.HasPrefix(s, "noisecrypt-public-v1:") {

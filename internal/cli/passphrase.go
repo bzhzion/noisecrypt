@@ -30,8 +30,24 @@ type passphraseSource struct {
 func (s *passphraseSource) register(fs interface {
 	StringVar(*string, string, string, string)
 }) {
-	fs.StringVar(&s.file, "passphrase-file", "", "read the passphrase from this file (recommended for scripts; '-' reads standard input)")
-	fs.StringVar(&s.env, "passphrase-env", "", "read the passphrase from this environment variable")
+	s.registerAs(fs, "passphrase", "the passphrase")
+}
+
+// registerAs names the flags, so a command that needs two different passphrases can ask
+// for both without either standing in for the other.
+//
+// That case is real rather than hypothetical: a container sealed to an identity needs no
+// passphrase of its own, but the identity file it is opened with may well be locked
+// under one, and sealing under a passphrase while signing with a locked identity needs
+// both at once. One flag serving two secrets would work until exactly that command, and
+// then silently offer the wrong secret to the wrong thing.
+func (s *passphraseSource) registerAs(fs interface {
+	StringVar(*string, string, string, string)
+}, prefix, what string) {
+	fs.StringVar(&s.file, prefix+"-file", "",
+		"read "+what+" from this file (recommended for scripts; '-' reads standard input)")
+	fs.StringVar(&s.env, prefix+"-env", "",
+		"read "+what+" from this environment variable")
 }
 
 // ErrNoPassphrase is returned when a passphrase is required and none could be read.

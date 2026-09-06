@@ -20,9 +20,23 @@ const maxInputSize = 8 << 30 // 8 GiB
 
 func runKeygen(env *Env, args []string) error {
 	fs := newFlagSet(env, "keygen", "[flags]")
-	out := fs.String("out", "", "write the private identity to this file instead of standard output")
+	out := fs.String("out", "", "write the identity here instead of the default location")
+	stdout := fs.Bool("stdout", false, "print the identity instead of storing it")
+	noPassphrase := fs.Bool("no-passphrase", false, "store the identity unprotected (not recommended)")
 	force := fs.Bool("force", false, "overwrite the output file if it already exists")
+	kdfTime := fs.Uint("kdf-time", uint(crypt.DefaultArgonTime), "Argon2id passes")
+	kdfMemory := fs.Uint("kdf-memory", uint(crypt.DefaultArgonMemory), "Argon2id memory in KiB")
+	kdfLanes := fs.Uint("kdf-lanes", uint(crypt.DefaultArgonLanes), "Argon2id lanes")
+	// The same passphrase sources as everywhere else, rather than a prompt of its own.
+	// A command that can only be answered by a human at a terminal is a command no
+	// script can use and no test can drive, and the mechanism already existed.
+	pass := &passphraseSource{confirm: true}
+	pass.register(fs)
 	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	kdf, err := kdfFromFlags(*kdfTime, *kdfMemory, *kdfLanes)
+	if err != nil {
 		return err
 	}
 
@@ -31,7 +45,7 @@ func runKeygen(env *Env, args []string) error {
 		return err
 	}
 
-	if *out == "" {
+	if *stdout {
 		// Printing a private key to a terminal is a footgun, so say so on stderr
 		// while the key itself goes to stdout, where a redirect can catch it.
 		fmt.Fprintln(env.Stderr, "Private identity follows on standard output. Store it somewhere only you can read.")
@@ -40,31 +54,50 @@ func runKeygen(env *Env, args []string) error {
 		return nil
 	}
 
-	// O_EXCL, not a stat-then-write: checking for existence first and creating
-	// afterwards leaves a window where another process wins the race, and silently
-	// overwriting somebody's only copy of a private key is unrecoverable.
-	flags := os.O_WRONLY | os.O_CREATE | os.O_EXCL
-	if *force {
-		flags = os.O_WRONLY | os.O_CREATE | os.O_TRUNC
-	}
-	f, err := os.OpenFile(*out, flags, 0o600)
-	if err != nil {
-		if errors.Is(err, os.ErrExist) {
-			return fmt.Errorf("%s already exists; pass -force to overwrite it", *out)
+	path := *out
+	if path == "" {
+		p, err := DefaultIdentityPath()
+		if err != nil {
+			return err
 		}
-		return err
-	}
-	defer f.Close()
-
-	if _, err := fmt.Fprintln(f, id.String()); err != nil {
-		return err
-	}
-	if err := f.Close(); err != nil {
-		return err
+		path = p
 	}
 
-	fmt.Fprintf(env.Stdout, "Private identity written to %s (mode 0600).\n", *out)
-	fmt.Fprintf(env.Stdout, "Public identity (share this):\n%s\n", id.Public.String())
+	// A passphrase by default, and an explicit flag to go without.
+	//
+	// This is what makes a predictable location defensible. A key kept somewhere
+	// everyone knows about is a convenience when what is found there is locked and an
+	// invitation when it is not, so the protection has to be the path of least
+	// resistance rather than the one you have to remember to ask for.
+	stored := id.String()
+	protected := false
+	if !*noPassphrase {
+		p, err := pass.resolve(env, "Passphrase to protect this identity: ")
+		if err != nil {
+			if errors.Is(err, ErrNoPassphrase) {
+				return errors.New("no passphrase supplied; pass -no-passphrase to store the identity unprotected")
+			}
+			return err
+		}
+		defer zero(p)
+		locked, err := crypt.LockIdentity(id, p, kdf)
+		if err != nil {
+			return err
+		}
+		stored, protected = locked, true
+	}
+
+	if err := writeIdentityFile(path, stored, *force); err != nil {
+		return err
+	}
+
+	if protected {
+		fmt.Fprintf(env.Stdout, "Identity stored at %s, protected by your passphrase.\n", path)
+	} else {
+		fmt.Fprintf(env.Stdout, "Identity stored at %s, UNPROTECTED: anyone who reads that file has it.\n", path)
+	}
+	fmt.Fprintln(env.Stdout, "Back that file up. Lose it and everything encrypted to it is gone.")
+	fmt.Fprintf(env.Stdout, "\nPublic identity (share this):\n%s\n", id.Public.String())
 	return nil
 }
 
@@ -82,6 +115,8 @@ func runSeal(env *Env, args []string) error {
 	force := fs.Bool("force", false, "overwrite the output file if it already exists")
 	pass := &passphraseSource{confirm: true}
 	pass.register(fs)
+	unlock := &passphraseSource{}
+	unlock.registerAs(fs, "identity-passphrase", "the passphrase protecting the identity file")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -99,7 +134,7 @@ func runSeal(env *Env, args []string) error {
 	}
 
 	sealed, plainSize, err := sealFile(env, *in, sealOptions{
-		to: *to, signWith: *signWith, noCompress: *noCompress, kdf: kdf,
+		to: *to, signWith: *signWith, noCompress: *noCompress, kdf: kdf, unlock: unlock,
 	}, pass)
 	if err != nil {
 		return err
@@ -129,6 +164,8 @@ func runOpen(env *Env, args []string) error {
 	force := fs.Bool("force", false, "overwrite the output file if it already exists")
 	pass := &passphraseSource{}
 	pass.register(fs)
+	unlock := &passphraseSource{}
+	unlock.registerAs(fs, "identity-passphrase", "the passphrase protecting the identity file")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -143,7 +180,7 @@ func runOpen(env *Env, args []string) error {
 	}
 
 	opened, err := openSealed(env, sealed, openOptions{
-		identity: *identity, from: *from, requireSignature: *requireSig,
+		identity: *identity, from: *from, requireSignature: *requireSig, unlock: unlock,
 	}, pass)
 	if err != nil {
 		return err
@@ -320,13 +357,53 @@ func resolveRecipient(s string) (crypt.PublicIdentity, error) {
 	return crypt.ParsePublicIdentity(strings.TrimSpace(string(b)))
 }
 
-func resolveIdentity(s string) (*crypt.PrivateIdentity, error) {
-	if id, err := crypt.ParsePrivateIdentity(s); err == nil {
-		return id, nil
+// resolveIdentity accepts a private identity token, a path to a file holding one, or
+// nothing at all, in which case the default location is consulted.
+//
+// A stored identity may be locked under a passphrase, so this asks for one when it meets
+// that shape and not before: prompting first and discovering afterwards that no
+// passphrase was wanted is how people learn to type one at any prompt.
+func resolveIdentity(env *Env, s string, unlock *passphraseSource) (*crypt.PrivateIdentity, error) {
+	if s != "" {
+		if id, err := crypt.ParsePrivateIdentity(s); err == nil {
+			return id, nil
+		}
 	}
-	b, err := os.ReadFile(s)
+
+	path := s
+	if path == "" {
+		p, err := DefaultIdentityPath()
+		if err != nil {
+			return nil, err
+		}
+		path = p
+	}
+
+	b, err := os.ReadFile(path)
 	if err != nil {
+		if s == "" {
+			return nil, fmt.Errorf("no identity given and none stored at %s", path)
+		}
 		return nil, fmt.Errorf("%q is neither a private identity nor a readable file", s)
 	}
-	return crypt.ParsePrivateIdentity(strings.TrimSpace(string(b)))
+	stored := strings.TrimSpace(string(b))
+
+	if !crypt.IsLockedIdentity(stored) {
+		return crypt.UnlockIdentity(stored, nil)
+	}
+	if unlock == nil {
+		unlock = &passphraseSource{}
+	}
+	pass, err := unlock.resolve(env, fmt.Sprintf("Passphrase for %s: ", path))
+	if err != nil {
+		return nil, err
+	}
+	defer zero(pass)
+	return crypt.UnlockIdentity(stored, pass)
+}
+
+func zero(b []byte) {
+	for i := range b {
+		b[i] = 0
+	}
 }

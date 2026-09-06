@@ -33,6 +33,8 @@ func runEncode(env *Env, args []string) error {
 	kdfLanes := fs.Uint("kdf-lanes", uint(crypt.DefaultArgonLanes), "Argon2id lanes (passphrase mode)")
 	pass := &passphraseSource{confirm: true}
 	pass.register(fs)
+	unlock := &passphraseSource{}
+	unlock.registerAs(fs, "identity-passphrase", "the passphrase protecting the identity file")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -60,7 +62,7 @@ func runEncode(env *Env, args []string) error {
 	}
 
 	sealed, plainSize, err := sealFile(env, *in, sealOptions{
-		to: *to, signWith: *signWith, noCompress: *noCompress, kdf: kdf,
+		to: *to, signWith: *signWith, noCompress: *noCompress, kdf: kdf, unlock: unlock,
 	}, pass)
 	if err != nil {
 		return err
@@ -154,6 +156,8 @@ func runDecode(env *Env, args []string) error {
 	force := fs.Bool("force", false, "overwrite the output file if it already exists")
 	pass := &passphraseSource{}
 	pass.register(fs)
+	unlock := &passphraseSource{}
+	unlock.registerAs(fs, "identity-passphrase", "the passphrase protecting the identity file")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -209,7 +213,7 @@ func runDecode(env *Env, args []string) error {
 	}
 
 	opened, err := openSealed(env, sealed, openOptions{
-		identity: *identity, from: *from, requireSignature: *requireSig,
+		identity: *identity, from: *from, requireSignature: *requireSig, unlock: unlock,
 	}, pass)
 	if err != nil {
 		return err
@@ -518,6 +522,10 @@ type sealOptions struct {
 	signWith   string
 	noCompress bool
 	kdf        crypt.KDFParams
+
+	// unlock reads the passphrase of the *identity file*, which is a different secret
+	// from the container's and so has its own flags.
+	unlock *passphraseSource
 }
 
 // sealFile packs and seals a file, returning the container and the plaintext size.
@@ -564,7 +572,7 @@ func sealFile(env *Env, path string, o sealOptions, pass *passphraseSource) ([]b
 	}
 
 	if o.signWith != "" {
-		signer, err := resolveIdentity(o.signWith)
+		signer, err := resolveIdentity(env, o.signWith, o.unlock)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -587,6 +595,10 @@ func sealFile(env *Env, path string, o sealOptions, pass *passphraseSource) ([]b
 type openOptions struct {
 	identity string
 
+	// unlock reads the passphrase of the *identity file*, which is a different secret
+	// from the container's and so has its own flags.
+	unlock *passphraseSource
+
 	// from, when set, is the public identity the container must be signed by.
 	from string
 
@@ -608,10 +620,9 @@ func openSealed(env *Env, sealed []byte, o openOptions, pass *passphraseSource) 
 
 	switch header.Mode {
 	case crypt.ModeHybrid:
-		if o.identity == "" {
-			return container.Opened{}, errors.New("this container is sealed to an identity; pass -identity")
-		}
-		id, err := resolveIdentity(o.identity)
+		// No -identity is no longer an error: the stored identity is consulted, which
+		// is the whole point of having a default location.
+		id, err := resolveIdentity(env, o.identity, o.unlock)
 		if err != nil {
 			return container.Opened{}, err
 		}
