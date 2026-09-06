@@ -196,14 +196,22 @@ nav button[aria-selected="true"] {
 
 /* Panels ------------------------------------------------------------------ */
 
-section[role="tabpanel"],
-#panel-profiles {
+section[role="tabpanel"] {
   margin-top: 2rem;
   padding: 1.75rem clamp(1rem, 3vw, 2rem);
   border: 1px solid var(--rule);
   border-radius: 2px;
   background: color-mix(in srgb, var(--panel) 88%, transparent);
   animation: rise 320ms ease both;
+}
+
+/* The channel table lives inside the video panel now, so it gets a rule above it rather
+   than a box of its own: a box inside a box reads as a separate thing, which is the
+   impression that put it under "Identities" in the first place. */
+#panel-profiles {
+  margin-top: 3.5rem;
+  padding-top: 2.5rem;
+  border-top: 1px solid var(--rule);
 }
 
 @keyframes rise {

@@ -191,19 +191,10 @@
     <button type="submit" class="btn btn-primary">Decode</button>
   </form>
   <output id="out-decode" role="status" aria-live="polite"></output>
-</section>
-
-<section id="panel-keys" role="tabpanel" aria-labelledby="tab-keys" hidden>
-  <h2 class="step" data-index="05">Generate an identity</h2>
-  <p class="hint">
-    Four keys: two for encryption and two for signing, one classical and one
-    post-quantum in each pair. Break one and you still need the other.
-  </p>
-  <button id="btn-keygen" type="button" class="btn btn-primary panel-action">Generate</button>
-  <output id="out-keys" role="status" aria-live="polite"></output>
-</section>
-
-<section id="panel-profiles">
+  <!-- Range dans le panneau video, pas sous tous les onglets. Il s'affichait
+       jusque sous « Identities », ou il laissait croire qu'un canal etait une
+       affaire d'identite. Il ne concerne que le menu deroulant juste au-dessus. -->
+<div id="panel-profiles">
   <h2 id="profiles-heading">Channel profiles</h2>
   <!-- A five column data table cannot reflow into 320 CSS pixels, and squeezing it would
        destroy the comparison it exists for. WCAG 1.4.10 exempts content that needs two
@@ -231,7 +222,19 @@
     and came back through its rendition ladder. <code>local</code> is the ceiling for a
     channel nobody re-encodes, and is not a weaker result.
   </p>
+</div>
 </section>
+
+<section id="panel-keys" role="tabpanel" aria-labelledby="tab-keys" hidden>
+  <h2 class="step" data-index="05">Generate an identity</h2>
+  <p class="hint">
+    Four keys: two for encryption and two for signing, one classical and one
+    post-quantum in each pair. Break one and you still need the other.
+  </p>
+  <button id="btn-keygen" type="button" class="btn btn-primary panel-action">Generate</button>
+  <output id="out-keys" role="status" aria-live="polite"></output>
+</section>
+
 
 </main>
 
