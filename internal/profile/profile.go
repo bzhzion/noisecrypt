@@ -163,10 +163,37 @@ var Archive = Profile{
 //
 // This profile is heavily overbuilt. It was designed to survive a scaling factor of
 // 8/15 and it survived 1/7.5, with cells reduced to four pixels and AV1 at 427 kbit/s,
-// a twentieth of the source bitrate. The 114 percent overhead buys far more margin
-// than the channel demands, so there is room for a much denser social profile. That
-// is a change to make on measurements, not on this observation alone: one upload of
-// one video is not a survey of the platform.
+// a twentieth of the source bitrate.
+//
+// # The denser profile that observation asked for, and where the search stopped
+//
+// SocialHD below is the answer to it: half the cell size, four and a half times the
+// payload, and it recovered every rendition of the same upload. Whether there is a
+// third, denser still, was measured on 2026-09-06 and the answer is no, on evidence
+// rather than caution.
+//
+// Only three things can be traded for payload here, and two of them are already at
+// their limit. Amplitude collapses: four levels instead of two failed at 1920p CRF 42
+// and at almost every rendition below, because amplitude detail is precisely what a
+// compressor spends its budget removing. Cell size has a floor near three pixels
+// *after* the platform's worst downscale: ten-pixel cells died at 426p and below, where
+// they land at 2.2 px, while SocialHD's fifteen land at 3.3 px and survive. Fifteen is
+// therefore already the smallest cell that reaches the bottom of the ladder, and the
+// 8/15 divisibility that motivated thirty motivates fifteen equally.
+//
+// Which leaves parity, and parity is where the measurement is worth reading twice. A
+// local re-encode sweep says cutting the budget from 25%/8 to 12%/4 is free: the same
+// qualities decode, the same ones fail, the cliff sits at CRF 34 either way, and the
+// payload grows by a third. It is not free. A local x264 re-encode fails off a cliff,
+// so below it the cells come back clean and no parity is needed, and above it the
+// damage is far past any budget: the experiment never produces the partial damage
+// parity exists for. Priced against raw byte error rate instead, in
+// fec.TestParityBuysErrorTolerance, that same cut takes tolerance from 2.77% to 0.68%.
+// A third more payload for a quarter of the margin, against platforms that do produce
+// partial damage through crops, overlays and bitrate-targeted renditions.
+//
+// The reusable part: a bench whose failure mode is all-or-nothing cannot price
+// redundancy, because redundancy only pays in the regime that bench skips.
 var Social = Profile{
 	Name:             "social",
 	Summary:          "toughest, for platforms, readable even from the bottom of the rendition ladder",

@@ -49,6 +49,31 @@ patched by CI at tag time and are never committed with a real version number.
   - Honours `prefers-reduced-motion`, and every colour pair was measured rather than
     eyeballed: 6.39:1 at the lowest, against the 4.5:1 that WCAG 2.2 AA asks for.
 
+### Measured, and deliberately not changed
+
+- **There is no third, denser social profile**, and that is now a result rather than an
+  omission. `social`'s own notes asked for one after it survived far more than it was
+  designed for; `social-hd` was that answer, and the search for a further one stopped on
+  evidence.
+  - Only three things trade for payload, and two are already at their limit. **Amplitude
+    collapses**: four levels instead of two failed at 1920p CRF 42 and at nearly every
+    rendition below, because amplitude detail is exactly what a compressor removes first.
+    **Cell size has a floor near three pixels after the worst downscale**: ten-pixel
+    cells died at 426p and below, where they land at 2.2 px, while fifteen land at 3.3 px
+    and survive.
+  - The third is parity, and it is the one worth reading twice. A local re-encode sweep
+    says halving the budget is free: same qualities decode, same ones fail, cliff at
+    CRF 34 either way, a third more payload. **It is not free.** A local x264 re-encode
+    fails off a cliff, so it never produces the partial damage parity exists for. Priced
+    against raw byte error rate instead, the same cut takes tolerance from **2.77% to
+    0.68%** — a third more payload for a quarter of the margin.
+  - New test `fec.TestParityBuysErrorTolerance` measures the whole range and fails if
+    less parity ever stops meaning less tolerance, which would mean the profiles are
+    tuned against a knob that does nothing.
+  - Worth carrying beyond this repository: **a bench whose failure mode is
+    all-or-nothing cannot price redundancy**, because redundancy only pays in the regime
+    that bench skips over.
+
 ### Changed
 
 - A profile now reports **what it was measured against** rather than a yes-or-no
