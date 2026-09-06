@@ -258,7 +258,8 @@ noisecrypt gui
 ```
 
 Your browser opens on a page served by the binary itself. Encrypt a file, decrypt one,
-generate an identity. No installation, no account, no configuration.
+turn one into video and get it back, generate an identity. No installation, no account,
+no configuration.
 
 Three things worth knowing about it. It listens only on your own machine, on a port
 chosen fresh each time, and is not reachable from your network, let alone the internet.
@@ -267,8 +268,10 @@ tells whoever serves that font you are using this tool. And it holds a one-time 
 you never have to see: the address the binary opens already carries it, so a page you
 happen to have open in another tab cannot reach in and ask this one to decrypt something.
 
-Carrying a container as video is not in the interface yet; that part is still `encode`
-and `decode` on the command line.
+One button on that page is worth pointing at: **what will it cost**. Turning a file into
+video takes as long as the video is long, and on the toughest channel a single mebibyte
+is minutes of footage. The interface will tell you the number of frames and the running
+time before you commit to it, rather than after.
 
 ### Encrypt with a passphrase
 

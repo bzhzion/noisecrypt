@@ -13,8 +13,24 @@ patched by CI at tag time and are never committed with a real version number.
 ### Added
 
 - **A graphical interface**, `noisecrypt gui`, which opens a page in your browser and
-  serves it from the binary itself. Encrypt, decrypt and generate identities without a
-  command line. Carrying a container as video is still command line only.
+  serves it from the binary itself. Encrypt, decrypt, carry a file as video, recover one
+  from a video, and generate identities, without a command line.
+  - **The estimate is a separate button, deliberately.** An encode runs for as long as
+    the video is long, with no total to divide by and therefore no honest progress bar,
+    so the interface offers to measure the cost before spending it. It measures rather
+    than approximates: the container is really sealed, because the overhead depends on
+    the mode, the KDF parameters and whether compression helped.
+  - A wrong channel is the likeliest mistake this interface allows, and the decoder's own
+    error ("no readable frames") does not point at it. The message now quotes both sets
+    of dimensions, which is the evidence, and names the two things they can mean.
+  - The unreadable-frame count is reported even on success. Redundancy absorbing damage
+    silently is the system working, and also exactly what hides a channel getting worse.
+  - Missing FFmpeg is reported once when the page loads, rather than by a button that
+    fails after a file has been chosen and a passphrase typed.
+  - Scratch files are created with `os.CreateTemp` and removed on every path out
+    including the failures, with a test that fails if any survive. A handler that returns
+    early leaves a copy of the user's video in the temporary directory, which is a
+    confidentiality failure rather than untidiness.
   - **Served locally rather than drawn natively**, because every Go toolkit that opens a
     real window links C into the process holding the decrypted private key. A browser is
     C++ too, and far more of it, but it runs in its own process and never sees a key. The

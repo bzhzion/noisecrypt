@@ -226,14 +226,153 @@ document.getElementById('btn-keygen').addEventListener('click', async () => {
   }
 });
 
+// Video ------------------------------------------------------------------
+//
+// The two long-running operations. Neither reports progress, and pretending otherwise
+// would be worse than saying so: the encoder hands frames to FFmpeg through a pipe with
+// no total to divide by, so any bar drawn here would be an animation rather than a
+// measurement.
+
+// duration formats seconds the way someone deciding whether to wait reads them.
+function duration(seconds) {
+  if (seconds < 60) return `${Math.round(seconds)} s`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)} min ${String(Math.round(seconds % 60)).padStart(2, '0')} s`;
+  return `${Math.floor(seconds / 3600)} h ${String(Math.floor((seconds % 3600) / 60)).padStart(2, '0')} min`;
+}
+
+// A long request needs its button held down for its whole duration, and needs the field
+// to say something is happening. Every video call goes through this.
+async function longRunning(button, out, message, work) {
+  button.disabled = true;
+  field.working(true);
+  show(out, message, 'busy');
+  try {
+    return await work();
+  } catch (err) {
+    show(out, String(err), 'error');
+    return null;
+  } finally {
+    field.working(false);
+    button.disabled = false;
+  }
+}
+
+document.getElementById('btn-estimate').addEventListener('click', async (event) => {
+  const form = document.getElementById('form-encode');
+  const out = document.getElementById('out-encode');
+  if (!form.reportValidity()) return;
+
+  await longRunning(event.target, out, 'Sealing, to measure it for real...', async () => {
+    const response = await api('/api/estimate', { method: 'POST', body: new FormData(form) });
+    if (!response.ok) {
+      show(out, await errorFrom(response), 'error');
+      return;
+    }
+    const e = await response.json();
+    show(
+      out,
+      `${e.frames.toLocaleString()} frames, ${duration(e.seconds)} of video at ` +
+        `${e.width}x${e.height}, ${e.fps} fps. Sealed size ${e.sealed.toLocaleString()} B.`,
+      'ok',
+    );
+  });
+});
+
+document.getElementById('form-encode').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const form = event.target;
+  const out = document.getElementById('out-encode');
+  const button = form.querySelector('button[type="submit"]');
+
+  await longRunning(button, out, 'Encoding. This runs for as long as the video is long.', async () => {
+    const response = await api('/api/encode', { method: 'POST', body: new FormData(form) });
+    if (!response.ok) {
+      show(out, await errorFrom(response), 'error');
+      return;
+    }
+    const name = await download(response, 'container.mp4');
+    show(out, `Encoded. Downloaded ${name}.`, 'ok');
+  });
+});
+
+document.getElementById('form-decode').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const form = event.target;
+  const out = document.getElementById('out-decode');
+  const button = form.querySelector('button[type="submit"]');
+
+  await longRunning(button, out, 'Reading every frame...', async () => {
+    const response = await api('/api/decode', { method: 'POST', body: new FormData(form) });
+    if (!response.ok) {
+      show(out, await errorFrom(response), 'error');
+      return;
+    }
+    const seen = response.headers.get('X-NoiseCrypt-Frames');
+    const bad = response.headers.get('X-NoiseCrypt-Unreadable');
+    const signer = response.headers.get('X-NoiseCrypt-Signer');
+    const name = await download(response, 'recovered.bin');
+
+    // The unreadable count is reported even on success, because it is the one number
+    // that says how much margin was left. Redundancy absorbing damage silently is the
+    // system working, and also the thing you want to know before trusting it again.
+    let text = `Recovered ${name} from ${seen} frames`;
+    text += bad === '0' ? ', none unreadable.' : `, ${bad} unreadable and corrected.`;
+    text += signer
+      ? ` Signature verified, signed by ${signer}.`
+      : ' Not signed: nothing proves who produced it.';
+    show(out, text, 'ok');
+  });
+});
+
+// FFmpeg is not bundled. Say so once, up front, rather than letting a button fail after
+// the user has chosen a file and typed a passphrase.
+(async () => {
+  try {
+    const response = await api('/api/tools');
+    if (!response.ok) return;
+    const tools = await response.json();
+    if (tools.ffmpeg) return;
+
+    const banner = document.getElementById('no-ffmpeg');
+    banner.textContent =
+      'FFmpeg was not found, so the video steps cannot run. Everything else on this ' +
+      'page works without it. ' + (tools.reason || '');
+    banner.hidden = false;
+    document.querySelectorAll('#panel-video form button').forEach((b) => (b.disabled = true));
+  } catch {
+    // Not being able to ask is not worth an alarm; the routes report it themselves.
+  }
+})();
+
 // Profiles.
 (async () => {
   const body = document.querySelector('#profiles tbody');
+  const selects = [...document.querySelectorAll('#enc-profile, #dec-profile')];
+  const hint = document.getElementById('enc-profile-hint');
   try {
     const response = await api('/api/profiles');
     if (!response.ok) return;
 
-    for (const p of await response.json()) {
+    const profiles = await response.json();
+
+    // The channel pickers are filled from the same source as the table, so a profile
+    // cannot exist in one and not the other.
+    const summaries = {};
+    for (const p of profiles) {
+      summaries[p.name] = p.summary;
+      for (const select of selects) {
+        const option = document.createElement('option');
+        option.value = p.name;
+        option.textContent = p.name;
+        select.append(option);
+      }
+    }
+    const encode = document.getElementById('enc-profile');
+    const describe = () => { hint.textContent = summaries[encode.value] || ''; };
+    encode.addEventListener('change', describe);
+    describe();
+
+    for (const p of profiles) {
       const row = document.createElement('tr');
       const cells = [
         p.name,

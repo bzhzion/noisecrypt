@@ -33,6 +33,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/keygen", s.handleKeygen)
 	s.mux.HandleFunc("POST /api/seal", s.handleSeal)
 	s.mux.HandleFunc("POST /api/open", s.handleOpen)
+	s.videoRoutes()
 }
 
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
@@ -156,6 +157,23 @@ func (s *Server) handleSeal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	sealed, code, err := seal(req)
+	if err != nil {
+		fail(w, code, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition",
+		fmt.Sprintf("attachment; filename=%q", req.name+".ncry"))
+	_, _ = w.Write(sealed)
+}
+
+// seal turns a parsed form into a sealed container, and is shared by the route that
+// hands one back and the route that goes on to carry it as video. It returns the HTTP
+// status to use alongside the error, because whether a failure is the caller's fault is
+// known here and nowhere else.
+func seal(req sealRequest) ([]byte, int, error) {
 	compression := container.CompressionGzip
 	if req.noCompress {
 		compression = container.CompressionNone
@@ -169,8 +187,7 @@ func (s *Server) handleSeal(w http.ResponseWriter, r *http.Request) {
 	case req.to != "":
 		recipient, err := crypt.ParsePublicIdentity(req.to)
 		if err != nil {
-			fail(w, http.StatusBadRequest, err)
-			return
+			return nil, http.StatusBadRequest, err
 		}
 		sealOpts.Recipient = &recipient
 		packOpts.Recipient = recipient.Fingerprint()
@@ -178,40 +195,31 @@ func (s *Server) handleSeal(w http.ResponseWriter, r *http.Request) {
 		// The same floor as the command line. Enforcing it in one place and not the
 		// other would make the weaker path the convenient one.
 		if len(req.passphrase) < 8 {
-			fail(w, http.StatusBadRequest,
-				fmt.Errorf("passphrase is %d bytes, the minimum for sealing is 8", len(req.passphrase)))
-			return
+			return nil, http.StatusBadRequest,
+				fmt.Errorf("passphrase is %d bytes, the minimum for sealing is 8", len(req.passphrase))
 		}
 		sealOpts.Passphrase = []byte(req.passphrase)
 	default:
-		fail(w, http.StatusBadRequest, fmt.Errorf("supply a passphrase or a recipient"))
-		return
+		return nil, http.StatusBadRequest, fmt.Errorf("supply a passphrase or a recipient")
 	}
 
 	if req.signWith != "" {
 		signer, err := crypt.ParsePrivateIdentity(req.signWith)
 		if err != nil {
-			fail(w, http.StatusBadRequest, err)
-			return
+			return nil, http.StatusBadRequest, err
 		}
 		packOpts.Signer = signer
 	}
 
 	packed, err := container.PackWith(packOpts, req.data)
 	if err != nil {
-		fail(w, http.StatusInternalServerError, err)
-		return
+		return nil, http.StatusInternalServerError, err
 	}
 	sealed, err := crypt.Seal(packed, sealOpts)
 	if err != nil {
-		fail(w, http.StatusInternalServerError, err)
-		return
+		return nil, http.StatusInternalServerError, err
 	}
-
-	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Header().Set("Content-Disposition",
-		fmt.Sprintf("attachment; filename=%q", req.name+".ncry"))
-	_, _ = w.Write(sealed)
+	return sealed, http.StatusOK, nil
 }
 
 func (s *Server) handleOpen(w http.ResponseWriter, r *http.Request) {
@@ -221,10 +229,20 @@ func (s *Server) handleOpen(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	header, _, err := crypt.ParseHeader(req.data)
+	opened, code, err := open(req, req.data)
 	if err != nil {
-		fail(w, http.StatusBadRequest, err)
+		fail(w, code, err)
 		return
+	}
+	writeOpened(w, opened)
+}
+
+// open turns a sealed container back into its contents, and is shared by the route that
+// takes one directly and the route that recovers one from a video.
+func open(req sealRequest, sealed []byte) (container.Opened, int, error) {
+	header, _, err := crypt.ParseHeader(sealed)
+	if err != nil {
+		return container.Opened{}, http.StatusBadRequest, err
 	}
 
 	var opts crypt.OpenOptions
@@ -232,39 +250,38 @@ func (s *Server) handleOpen(w http.ResponseWriter, r *http.Request) {
 
 	if header.Mode == crypt.ModeHybrid {
 		if req.signWith == "" {
-			fail(w, http.StatusBadRequest,
-				fmt.Errorf("this container is sealed to an identity; supply the private identity"))
-			return
+			return container.Opened{}, http.StatusBadRequest,
+				fmt.Errorf("this container is sealed to an identity; supply the private identity")
 		}
 		id, err := crypt.ParsePrivateIdentity(req.signWith)
 		if err != nil {
-			fail(w, http.StatusBadRequest, err)
-			return
+			return container.Opened{}, http.StatusBadRequest, err
 		}
 		opts.Identity = id
 		recipient = id.Public.Fingerprint()
 	} else {
 		if req.passphrase == "" {
-			fail(w, http.StatusBadRequest, fmt.Errorf("this container needs a passphrase"))
-			return
+			return container.Opened{}, http.StatusBadRequest,
+				fmt.Errorf("this container needs a passphrase")
 		}
 		opts.Passphrase = []byte(req.passphrase)
 	}
 
-	payload, err := crypt.Open(req.data, opts)
+	payload, err := crypt.Open(sealed, opts)
 	if err != nil {
 		// Deliberately passed through as it stands: wrong passphrase, wrong
 		// recipient and tampering are one indistinguishable failure by design.
-		fail(w, http.StatusBadRequest, err)
-		return
+		return container.Opened{}, http.StatusBadRequest, err
 	}
 
 	opened, err := container.Open(payload, recipient)
 	if err != nil {
-		fail(w, http.StatusBadRequest, err)
-		return
+		return container.Opened{}, http.StatusBadRequest, err
 	}
+	return opened, http.StatusOK, nil
+}
 
+func writeOpened(w http.ResponseWriter, opened container.Opened) {
 	signer := ""
 	if opened.Signer != nil {
 		signer = opened.Signer.Short()

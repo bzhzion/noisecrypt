@@ -167,6 +167,15 @@ section[role="tabpanel"],
 
 .step::before { content: attr(data-index) "  "; color: var(--dim); }
 
+/* A second step inside the same panel needs a rule and room above it, or it reads as a
+   caption for the paragraph it follows rather than as the start of something new. The
+   video panel is the only place two steps share a panel, and it is where this showed. */
+.step:not(:first-child) {
+  margin-top: 3.5rem;
+  padding-top: 2.5rem;
+  border-top: 1px solid var(--rule);
+}
+
 /* Fields ------------------------------------------------------------------ */
 
 fieldset {
@@ -201,6 +210,7 @@ label.inline {
 
 input[type="file"],
 input[type="password"],
+select,
 textarea {
   display: block;
   width: 100%;
@@ -214,10 +224,40 @@ textarea {
   transition: border-color 140ms ease;
 }
 
-input:hover, textarea:hover { border-color: color-mix(in srgb, var(--signal) 45%, var(--rule)); }
-input:focus, textarea:focus { border-color: var(--signal); }
+input:hover, select:hover, textarea:hover { border-color: color-mix(in srgb, var(--signal) 45%, var(--rule)); }
+input:focus, select:focus, textarea:focus { border-color: var(--signal); }
 
 textarea { resize: vertical; word-break: break-all; line-height: 1.5; }
+
+/* The native arrow is drawn by the platform in the platform's colours, which on a dark
+   field means an invisible one. Suppressed, and replaced by a caret drawn here. */
+select {
+  appearance: none;
+  cursor: pointer;
+  padding-right: 2.2rem;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--dim) 50%),
+    linear-gradient(135deg, var(--dim) 50%, transparent 50%);
+  background-position: right 1.15rem center, right 0.85rem center;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+}
+select option { background: var(--ink); color: var(--paper); }
+
+/* Two buttons that belong to one decision: measure, then spend. */
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem;
+  align-items: center;
+}
+.row button { margin: 0; }
+
+/* A disabled control has to look unavailable rather than merely feel unresponsive. */
+button:disabled, input:disabled, select:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
 
 input[type="file"] { padding: 0.55rem 0.6rem; color: var(--dim); cursor: pointer; }
 input[type="file"]::file-selector-button {
