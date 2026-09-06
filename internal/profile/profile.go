@@ -179,8 +179,8 @@ var Social = Profile{
 	IntraParityRatio: 0.25,
 	InterData:        24,
 	InterParity:      8,
-	Evidence:     EvidencePlatform, // 2026-09-05
-	EvidenceNote: "YouTube, 9 renditions",
+	Evidence:         EvidencePlatform, // 2026-09-05
+	EvidenceNote:     "YouTube, 9 renditions",
 }
 
 // SocialHD trades the very bottom of a platform's rendition ladder for four and a half
@@ -246,8 +246,8 @@ var SocialHD = Profile{
 	IntraParityRatio: 0.25,
 	InterData:        24,
 	InterParity:      8,
-	Evidence:     EvidencePlatform, // zero lost frames, 2026-09-05
-	EvidenceNote: "YouTube, 10 renditions",
+	Evidence:         EvidencePlatform, // zero lost frames, 2026-09-05
+	EvidenceNote:     "YouTube, 10 renditions",
 }
 
 var registry = map[string]Profile{
