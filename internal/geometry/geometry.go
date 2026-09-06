@@ -220,9 +220,12 @@ func findEdge(bright, dark []float64, fromEnd bool) (int, error) {
 		stateSeeking = iota
 		stateInQuiet
 		stateInBorder
+		stateMaybeData
 	)
 
 	state := stateSeeking
+	candidate := 0
+
 	for i := range n {
 		j := idx(i)
 		switch state {
@@ -241,8 +244,35 @@ func findEdge(bright, dark []float64, fromEnd bool) (int, error) {
 				return j, nil
 			}
 			if bright[j] >= mostly {
-				// Back out into brightness without ever hitting mixed content.
-				// The border enclosed nothing, so this is not our rectangle.
+				// Brightness right after the border. This used to fail here, and
+				// failing here was wrong often enough to cost frames.
+				//
+				// The reason is statistical rather than geometric. "Mostly bright"
+				// is a fixed 70% applied to a line whose content is one cell wide,
+				// so its spread depends on how many cells are stacked in that line.
+				// The `social` profile has 62 cells per column: drawing 44 or more
+				// bright out of 62 sits 3.3 standard deviations out, about one line
+				// in two thousand, four edges per frame, so roughly one frame in a
+				// few hundred had a genuinely-first-data-line that read as quiet.
+				// `social-hd` stacks 124 cells and the same event is 4.5 standard
+				// deviations out, one in 250,000, which is exactly why it never
+				// lost a frame and `social` always lost about three.
+				//
+				// A uniformly bright first line of data is legitimate, so it is now
+				// held as a candidate rather than treated as proof of absence. The
+				// guard it used to provide is kept: the candidate is only accepted
+				// once mixed content actually appears.
+				state = stateMaybeData
+				candidate = j
+			}
+		case stateMaybeData:
+			if dark[j] < mostly && bright[j] < mostly {
+				// Data does follow, so the bright line was its first line.
+				return candidate, nil
+			}
+			if dark[j] >= mostly {
+				// Border, bright gap, border. That is not one rectangle with data
+				// in it, which is the case the original guard existed for.
 				return 0, errors.New("border encloses no data")
 			}
 		}
@@ -253,6 +283,9 @@ func findEdge(bright, dark []float64, fromEnd bool) (int, error) {
 		return 0, errors.New("no quiet zone found")
 	case stateInQuiet:
 		return 0, errors.New("quiet zone found but no border inside it")
+	case stateMaybeData:
+		// Bright all the way to the far edge: the border really did enclose nothing.
+		return 0, errors.New("border encloses no data")
 	default:
 		return 0, errors.New("border found but it never opens onto data")
 	}

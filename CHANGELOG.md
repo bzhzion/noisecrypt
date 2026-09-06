@@ -119,6 +119,27 @@
 
 ### Fixed
 
+- **The three unreadable frames the `social` profile lost on every encode are gone**, and
+  the cause was not damage. They failed before any channel was involved: the codec could
+  not read a frame it had drawn itself a moment earlier.
+  - The clue that made this worth chasing rather than accepting: `social-hd` lost none,
+    on the same codec with the same parity, differing only in cell size.
+  - The cause is statistical, not geometric. `findEdge` walks quiet zone, then border,
+    then stops at the first *mixed* line, and it used to give up the moment it met a line
+    more than 70% bright while inside the border. But a first line of data can be almost
+    all one level by luck, and "mostly" is a fixed threshold applied to a line one cell
+    wide, so its spread depends on how many cells are stacked in it. `social` stacks 62
+    cells per column: 44 or more bright out of 62 sits 3.3 standard deviations out, one
+    line in two thousand, four edges per frame. `social-hd` stacks 124 and puts the same
+    event 4.5 standard deviations out, one in 250,000 — which is exactly why it never
+    lost a frame where `social` always lost about three.
+  - A uniformly bright first line is now held as a candidate and accepted once mixed
+    content confirms it, rather than treated as proof that the border enclosed nothing.
+    The guard it provided is kept and tested: brightness running to the far edge, and the
+    border-gap-border shape, both still fail.
+  - Verified on a real re-encode round trip and not only in memory: 0 of 32 frames
+    unreadable at 1920p and at 426p, CRF 26 and 34.
+
 - **`-help` did not work.** Help answered to `-h`, `--help` and `help`, and not to
   `-help`, which is the spelling Go's own flag package prints and therefore the one a Go
   user tries first: it exited 2 on "unknown command". Neither did `-version`, `--version`
@@ -200,6 +221,32 @@
   is unmaintained and unsafe by design. It is **not imported** here, it has no fixed
   version and never will, since the advisory's remedy is to stop using the package.
   Recorded as an accepted risk so a future audit does not re-open it.
+
+### Known limitations
+
+- **A first line of data that happens to be almost all *dark* is still absorbed into the
+  border**, and this one produces no error at all. The located rectangle is one cell
+  short, the frame yields bytes rather than a gap, and the error-correcting layer spends
+  parity on noise where it could have skipped an erasure. Found by a diagnostic that
+  compared the located rectangle against the rendered one instead of only counting
+  failures, which is the part that had never been looked at.
+  - Cost measured rather than guessed: roughly one frame in a few hundred, worth about
+    0.4% raw byte errors on a profile that tolerates 2.77%.
+  - **Not fixed here, deliberately.** The obvious fix is a thickness ratio, since `Render`
+    puts the border at exactly `margin/2`, the same thickness as the quiet zone outside
+    it. It works on a frame straight out of `Render` and breaks the case this layer exists
+    for: a platform that crops into the quiet zone leaves three lines of quiet against
+    fifteen of legitimate border, and the ratio then fires on every frame and returns a
+    position that is wrong by design. Trading a once-in-a-few-hundred fluke for a
+    systematic failure on cropped input is a bad trade.
+  - The fix that would hold is one level up and is not a ratio. The rendered data area has
+    a known aspect ratio of cols to rows, a uniform resize preserves it, and swallowing
+    one line deviates from it by 1/rows, about 1.6% on `social`. `Locate` cannot check
+    that because it is handed only an image, but `Sample` already receives cols and rows,
+    so the check belongs there, acting on a measurable inconsistency rather than a guess
+    about thickness.
+  - Kept as a skipped test carrying the whole diagnosis, so it stays findable rather than
+    becoming folklore.
 
 ### Measured
 
