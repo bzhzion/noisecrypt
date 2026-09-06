@@ -1,13 +1,3 @@
-# Changelog
-
-All notable changes to this project are documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
-Versions live in git tags only. `go.mod` and any embedded version string are
-patched by CI at tag time and are never committed with a real version number.
-
 ## [Unreleased]
 
 ### Added
@@ -49,6 +39,53 @@ patched by CI at tag time and are never committed with a real version number.
   - Honours `prefers-reduced-motion`, and every colour pair was measured rather than
     eyeballed: 6.39:1 at the lowest, against the 4.5:1 that WCAG 2.2 AA asks for.
 
+- The help now names its one prerequisite: `encode`, `decode` and `simulate` shell out to
+  FFmpeg and the other seven need nothing installed. A list of commands cannot show that,
+  so a user met it as an error instead.
+
+- The interface **shows its version**. It previously said "Local instance", which the
+  reader already knew, and left someone reporting a problem unable to say which build
+  they were looking at.
+
+- The interface now **states what it cannot do** rather than letting a reader conclude
+  those things do not exist: `simulate`, the Argon2id parameters, the encoder knobs, and
+  reading a passphrase from a file or the environment.
+
+- **Optional digital signatures**, so a container can prove who produced it rather than
+  only that somebody knew the recipient's public key. `-sign` when encrypting, `-from`
+  or `-require-signature` when decrypting.
+  - Hybrid, on the same reasoning as the key exchange: Ed25519 **and** ML-DSA-65
+    (FIPS 204), both produced and both required to verify. There is no mode that accepts
+    one of the two.
+  - **Optional means optional.** A signature that is present must verify, and a failure
+    is fatal rather than a warning, because tolerating a broken one would make stripping
+    a signature as effective as forging it. A signature that is absent is not an error;
+    the tool says plainly that nothing proves the container's origin, and refusing that
+    is the caller's decision through `-require-signature`.
+  - The signature is made over the **plaintext**, so it travels inside the ciphertext
+    and only the recipient learns who sent the container. Putting it outside would tell
+    every observer, which contradicts the point of keeping metadata confidential.
+  - What is signed includes **the recipient's fingerprint**, closing surreptitious
+    forwarding: a recipient cannot re-encrypt a still-valid signed payload to a third
+    party and have it verify there.
+
+- Identities now carry four keys instead of two, because encryption keys cannot sign.
+  A public identity goes from 1216 to 3200 bytes, so the pasted token grows from about
+  1620 to 4288 characters. The private half stays at 160 bytes by storing seeds rather
+  than expanded keys.
+
+- **Test vectors in `docs/FORMAT.md`**, which the specification had promised would ship
+  "with the first tagged release" and did not. A second implementation can now derive one
+  reference identity from a published seed and check its length, its token length and its
+  fingerprint against fixed values.
+  - **No fixed ciphertext vector, deliberately.** Sealing is randomised, so pinning one
+    would mean fixing the nonce prefix and the Argon2id salt, and a format that can be
+    made deterministic on request invites an implementation that ships that way by
+    accident. Nonce reuse under a stream cipher leaks the exclusive-or of two plaintexts,
+    which is a poor trade for a static test file. The guarantee is stated in the
+    checkable direction instead: a container from any conforming implementation must
+    open.
+
 ### Changed
 
 - The licence file is now `LICENSE.md`, matching the other public repositories in this
@@ -57,51 +94,66 @@ patched by CI at tag time and are never committed with a real version number.
   visible. The name has no bearing on licence detection: GitHub reports BZ-1.1 as "Other"
   either way, since it is not an SPDX-listed licence.
 
-### Discoverability, after asking what each surface can actually do
+- A profile now reports **what it was measured against** rather than a yes-or-no
+  `Verified` flag. Three states: `platform` (a container went up to a real service and
+  came back through its rendition ladder), `local` (a real encoder, no platform), and
+  `unmeasured`, each with a one-line note behind it.
+  - The boolean was understating `archive`. It counted platform round trips only, so
+    `archive` read as false, and false next to two profiles reading true says "not tested
+    yet". The truth is that `archive` targets channels nobody re-encodes, so it has no
+    platform to be carried across, and it *was* measured, locally, up to CRF 23. Two
+    states cannot hold three situations: "measured elsewhere" and "not measured" were
+    collapsed into the same value, which is precisely the kind of claim this package
+    exists to avoid making.
+
+- Minimum Go raised to **1.26.6**. Adding an HTTP server made fifteen standard library
+  vulnerabilities *reachable* that had never been reachable before: `net/http.Server`
+  pulls a large part of the standard library into the call graph, so govulncheck stopped
+  discounting them. Nothing in this repository's own code changed for the worse, and the
+  finding was real anyway, which is the scanner earning its place.
+  - Recorded because the first attempt got it wrong in an instructive way. The report
+    lists a `Fixed in:` version per vulnerability, and the fix is the **maximum** across
+    all of them, not the first one you read: a bump to 1.26.1 cleared four of the fifteen
+    and the build stayed red. A scanner that reports per-finding requirements needs its
+    output aggregated before it is acted on.
+
+### Fixed
 
 - **`-help` did not work.** Help answered to `-h`, `--help` and `help`, and not to
   `-help`, which is the spelling Go's own flag package prints and therefore the one a Go
   user tries first: it exited 2 on "unknown command". Neither did `-version`, `--version`
   or `-v`. All of them now do. A help flag that has to be guessed correctly is not help.
-- The help now names its one prerequisite: `encode`, `decode` and `simulate` shell out to
-  FFmpeg and the other seven need nothing installed. A list of commands cannot show that,
-  so a user met it as an error instead.
+
 - **The interface could report a signature but never demand one**, which made it strictly
   weaker than the command line rather than merely smaller. It said who signed a container,
   or that nobody had, and handed the contents over either way, so removing a signature
   worked as well as forging one. Both decrypt forms now carry `requireSignature` and
   `from`, with the five outcomes pinned by tests, including a valid signature by the
   wrong person, which a check on "is it signed" alone waves through.
-- The interface **shows its version**. It previously said "Local instance", which the
-  reader already knew, and left someone reporting a problem unable to say which build
-  they were looking at.
-- The interface now **states what it cannot do** rather than letting a reader conclude
-  those things do not exist: `simulate`, the Argon2id parameters, the encoder knobs, and
-  reading a passphrase from a file or the environment.
-
-### Fixed in the interface, after a proper look at it
-
-Four defects, none visible in a screenshot of a working page, all found by measuring it
-rather than admiring it.
 
 - **The tab list claimed a keyboard behaviour it did not have.** `role="tab"` tells a
   screen reader the arrow keys move between tabs and that one stop holds them all in the
   page's tab order. Neither was true: four separate stops, arrows inert. Plain buttons
   with no role would have been *more* usable than the pattern half-applied. Now a roving
   tabindex with arrows, Home and End, per the ARIA authoring practices.
+
 - **Steps were spans, so the page had one heading.** No navigation by structure, and the
   video panel holds two sections that had no heading at all.
+
 - **Buttons were styled by their HTML type**, which worked until a form had two of them.
   `button[type="submit"]` outranked `.row button` on specificity and `.action` did not,
   so the two sat at different heights, and the outlined style made the *measuring* button
   look heavier than the *acting* one. Importance is not something an attribute knows:
   buttons now declare it, one filled primary per form.
+
 - **Horizontal scrolling at 320 CSS pixels**, WCAG 1.4.10, caused by the five column
   profiles table. Squeezing it would destroy the comparison it exists for, and the
   criterion exempts content that needs two dimensions, so it scrolls in its own region
   instead. That region is focusable, which is the part usually forgotten: a scroll
   container nobody can focus is one nobody can scroll without a mouse.
+
 - The compression checkbox was 13 px, under the 24 px floor of WCAG 2.2 AA 2.5.8.
+
 - **A tab was being eaten at narrow widths, silently.** The bar was four items across
   inside `overflow: hidden`, which was there so the corner radius would cut the buttons,
   and flex items refuse to shrink below their own text: at 320 CSS pixels the row
@@ -110,20 +162,46 @@ rather than admiring it.
   emerge from the available width, which had produced a three-plus-one at 480 px with the
   fourth tab stretched alone across its own row. Sideways scrolling was rejected: it
   hides content behind a gesture instead of behind a clip.
+
 - The header committed to two columns at every width, leaving 16 px between the tagline
   and the readout on a phone. It stacks below 34rem.
+
 - **The body copy was set in absolute pixels** while everything around it was in rem, so
   browser zoom scaled the whole interface and left the reading size behind, and a reader
   who raises their default font size instead of zooming got nothing. Found by verifying
   that a zoom test had actually zoomed, rather than trusting that it had.
+
 - Verified by driving a browser at 320, 360, 480, 544, 560, 768 and 1280, and again at
   200 percent text zoom, rather than by reading the stylesheet.
+
 - New `markup_test.go`: labels, tab and panel wiring, headings, keyboard handling and
   button roles, each proved red against the real defect before being kept. One of those
   proofs failed and improved the test: prefixing `ArrowRight` to `XArrowRight` did not
   turn it red, because a substring check accepts that.
 
-### Measured, and deliberately not changed
+- `PublicIdentity.Short`, a grouped 64-bit fingerprint, used wherever a human needs to
+  see which identity is involved.
+
+- **The signature did not cover the signer's own encryption keys.** Found by flipping
+  every bit of a signed payload rather than by reading the code: byte 53 could be
+  changed with the signature still verifying. A signed payload embeds the signer's
+  identity, which holds four keys, and only the signing pair takes part in verification,
+  so the encryption keys inside it were covered by nothing. An attacker could swap them,
+  keep the signature valid, and a recipient composing a reply from that identity would
+  encrypt it to the attacker. The signed message now includes the signer's whole
+  identity.
+
+- Printing the full 4288 character identity token on every successful decode buried the
+  rest of the output. It reports a short fingerprint now.
+
+### Security
+
+- `govulncheck` reports GO-2026-5932 in a module we require: `golang.org/x/crypto/openpgp`
+  is unmaintained and unsafe by design. It is **not imported** here, it has no fixed
+  version and never will, since the advisory's remedy is to stop using the package.
+  Recorded as an accepted risk so a future audit does not re-open it.
+
+### Measured
 
 - **There is no third, denser social profile**, and that is now a result rather than an
   omission. `social`'s own notes asked for one after it survived far more than it was
@@ -147,88 +225,6 @@ rather than admiring it.
   - Worth carrying beyond this repository: **a bench whose failure mode is
     all-or-nothing cannot price redundancy**, because redundancy only pays in the regime
     that bench skips over.
-
-### Changed
-
-- A profile now reports **what it was measured against** rather than a yes-or-no
-  `Verified` flag. Three states: `platform` (a container went up to a real service and
-  came back through its rendition ladder), `local` (a real encoder, no platform), and
-  `unmeasured`, each with a one-line note behind it.
-  - The boolean was understating `archive`. It counted platform round trips only, so
-    `archive` read as false, and false next to two profiles reading true says "not tested
-    yet". The truth is that `archive` targets channels nobody re-encodes, so it has no
-    platform to be carried across, and it *was* measured, locally, up to CRF 23. Two
-    states cannot hold three situations: "measured elsewhere" and "not measured" were
-    collapsed into the same value, which is precisely the kind of claim this package
-    exists to avoid making.
-
-### Fixed
-
-- Minimum Go raised to **1.26.6**. Adding an HTTP server made fifteen standard library
-  vulnerabilities *reachable* that had never been reachable before: `net/http.Server`
-  pulls a large part of the standard library into the call graph, so govulncheck stopped
-  discounting them. Nothing in this repository's own code changed for the worse, and the
-  finding was real anyway, which is the scanner earning its place.
-  - Recorded because the first attempt got it wrong in an instructive way. The report
-    lists a `Fixed in:` version per vulnerability, and the fix is the **maximum** across
-    all of them, not the first one you read: a bump to 1.26.1 cleared four of the fifteen
-    and the build stayed red. A scanner that reports per-finding requirements needs its
-    output aggregated before it is acted on.
-
-- **Optional digital signatures**, so a container can prove who produced it rather than
-  only that somebody knew the recipient's public key. `-sign` when encrypting, `-from`
-  or `-require-signature` when decrypting.
-  - Hybrid, on the same reasoning as the key exchange: Ed25519 **and** ML-DSA-65
-    (FIPS 204), both produced and both required to verify. There is no mode that accepts
-    one of the two.
-  - **Optional means optional.** A signature that is present must verify, and a failure
-    is fatal rather than a warning, because tolerating a broken one would make stripping
-    a signature as effective as forging it. A signature that is absent is not an error;
-    the tool says plainly that nothing proves the container's origin, and refusing that
-    is the caller's decision through `-require-signature`.
-  - The signature is made over the **plaintext**, so it travels inside the ciphertext
-    and only the recipient learns who sent the container. Putting it outside would tell
-    every observer, which contradicts the point of keeping metadata confidential.
-  - What is signed includes **the recipient's fingerprint**, closing surreptitious
-    forwarding: a recipient cannot re-encrypt a still-valid signed payload to a third
-    party and have it verify there.
-- Identities now carry four keys instead of two, because encryption keys cannot sign.
-  A public identity goes from 1216 to 3200 bytes, so the pasted token grows from about
-  1620 to 4288 characters. The private half stays at 160 bytes by storing seeds rather
-  than expanded keys.
-- `PublicIdentity.Short`, a grouped 64-bit fingerprint, used wherever a human needs to
-  see which identity is involved.
-- **Test vectors in `docs/FORMAT.md`**, which the specification had promised would ship
-  "with the first tagged release" and did not. A second implementation can now derive one
-  reference identity from a published seed and check its length, its token length and its
-  fingerprint against fixed values.
-  - **No fixed ciphertext vector, deliberately.** Sealing is randomised, so pinning one
-    would mean fixing the nonce prefix and the Argon2id salt, and a format that can be
-    made deterministic on request invites an implementation that ships that way by
-    accident. Nonce reuse under a stream cipher leaks the exclusive-or of two plaintexts,
-    which is a poor trade for a static test file. The guarantee is stated in the
-    checkable direction instead: a container from any conforming implementation must
-    open.
-
-### Fixed
-
-- **The signature did not cover the signer's own encryption keys.** Found by flipping
-  every bit of a signed payload rather than by reading the code: byte 53 could be
-  changed with the signature still verifying. A signed payload embeds the signer's
-  identity, which holds four keys, and only the signing pair takes part in verification,
-  so the encryption keys inside it were covered by nothing. An attacker could swap them,
-  keep the signature valid, and a recipient composing a reply from that identity would
-  encrypt it to the attacker. The signed message now includes the signer's whole
-  identity.
-- Printing the full 4288 character identity token on every successful decode buried the
-  rest of the output. It reports a short fingerprint now.
-
-### Security
-
-- `govulncheck` reports GO-2026-5932 in a module we require: `golang.org/x/crypto/openpgp`
-  is unmaintained and unsafe by design. It is **not imported** here, it has no fixed
-  version and never will, since the advisory's remedy is to stop using the package.
-  Recorded as an accepted risk so a future audit does not re-open it.
 
 ## [0.1.0] - 2026-09-05
 
