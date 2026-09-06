@@ -35,6 +35,17 @@ patched by CI at tag time and are never committed with a real version number.
   than expanded keys.
 - `PublicIdentity.Short`, a grouped 64-bit fingerprint, used wherever a human needs to
   see which identity is involved.
+- **Test vectors in `docs/FORMAT.md`**, which the specification had promised would ship
+  "with the first tagged release" and did not. A second implementation can now derive one
+  reference identity from a published seed and check its length, its token length and its
+  fingerprint against fixed values.
+  - **No fixed ciphertext vector, deliberately.** Sealing is randomised, so pinning one
+    would mean fixing the nonce prefix and the Argon2id salt, and a format that can be
+    made deterministic on request invites an implementation that ships that way by
+    accident. Nonce reuse under a stream cipher leaks the exclusive-or of two plaintexts,
+    which is a poor trade for a static test file. The guarantee is stated in the
+    checkable direction instead: a container from any conforming implementation must
+    open.
 
 ### Fixed
 

@@ -306,6 +306,55 @@ most likely to skip, because each looks like defensive paperwork until it is the
 
 ## 4. Test vectors
 
-Not yet published. They will be added with the first tagged release, alongside a
-`testdata` directory of sealed containers that must open with a fixed passphrase and a
-fixed identity, so that a future refactor cannot silently change the format.
+### 4.1 The reference identity
+
+Every vector below derives from one fixed private identity, so an independent
+implementation can reproduce all of them from this string alone with nothing carried
+over from whoever generated them.
+
+A private identity is 160 raw bytes, so the first 160 bytes of the counting pattern
+`00 01 02 ... 9f` form a valid one:
+
+```
+seed (hex, 160 bytes)
+  000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f
+  202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f
+  404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f
+  606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f
+  808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9f
+```
+
+This is a published fixture, not a secret. Anything sealed to it is public.
+
+### 4.2 Derived values
+
+| Value | Expected |
+|---|---|
+| Private identity length | 160 bytes |
+| Public identity length | 3200 bytes |
+| Public token length | 4288 characters, after the `noisecrypt-public-v1:` prefix and base64url |
+| Signature block length | 3373 bytes |
+| Public identity fingerprint | `efabdb74cfb3b19b0bbd96e685bb3e31e5f6b68a8e15b7018ec98d0db2f5007a` |
+
+The fingerprint is SHA-256 over the 3200 serialised public bytes. If an implementation
+derives the same identity from the seed and gets a different fingerprint, the layout of
+`§3.3` has been read differently, most likely the key order.
+
+### 4.3 What is deliberately not pinned
+
+**There is no fixed ciphertext vector, and this is not an omission.**
+
+Sealing is randomised: every container has a fresh nonce prefix and, in passphrase mode,
+a fresh Argon2id salt. Producing a reproducible ciphertext would mean fixing those, and
+a format that can be made deterministic on demand invites an implementation that ships
+that way by accident. Nonce reuse under a stream cipher leaks the exclusive-or of two
+plaintexts, so this is a bad trade for the convenience of a static test file.
+
+The interoperability guarantee is therefore stated in the direction that can be checked
+without weakening anything: **a container produced by any conforming implementation must
+open**. That is what the reference implementation tests, in both modes, signed and
+unsigned, in `internal/crypt/vectors_test.go`.
+
+Anyone writing a second implementation can pin the same way: derive the identity above,
+confirm the fingerprint, then seal and open against the reference binary in both
+directions.
