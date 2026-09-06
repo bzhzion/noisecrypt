@@ -213,7 +213,71 @@ document.getElementById('form-open').addEventListener('submit', async (event) =>
   }
 });
 
-// Keys.
+// Keys --------------------------------------------------------------------
+
+// confirmOn briefly replaces a button's label, because a copy that gives no sign of
+// having happened leaves you pressing it again to be sure.
+function confirmOn(button, message) {
+  const original = button.textContent;
+  button.textContent = message;
+  button.disabled = true;
+  setTimeout(() => {
+    button.textContent = original;
+    button.disabled = false;
+  }, 1400);
+}
+
+function copyButton(value) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'btn btn-secondary btn-small';
+  button.textContent = 'Copy';
+  button.addEventListener('click', async () => {
+    try {
+      // Available because a page served from 127.0.0.1 counts as a secure context,
+      // the same way https does. The fallback covers a browser that disagrees rather
+      // than leaving the button silently inert.
+      await navigator.clipboard.writeText(value);
+      confirmOn(button, 'Copied');
+    } catch {
+      const scratch = document.createElement('textarea');
+      scratch.value = value;
+      scratch.style.position = 'fixed';
+      scratch.style.opacity = '0';
+      document.body.append(scratch);
+      scratch.select();
+      const ok = document.execCommand('copy');
+      scratch.remove();
+      confirmOn(button, ok ? 'Copied' : 'Copy failed');
+    }
+  });
+  return button;
+}
+
+function saveButton(value, filename) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'btn btn-secondary btn-small';
+  button.textContent = 'Save to a file';
+  button.addEventListener('click', () => {
+    // A trailing newline, and nothing else in the file, so what the browser writes is
+    // byte for byte what `noisecrypt keygen -out` writes. A file saved here therefore
+    // works with `-identity` on the command line, which it would not if this added a
+    // header or a label for readability.
+    const blob = new Blob([value + '\n'], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.append(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    confirmOn(button, 'Saved');
+  });
+  return button;
+}
+
 document.getElementById('btn-keygen').addEventListener('click', async () => {
   const out = document.getElementById('out-keys');
   show(out, 'Generating...');
@@ -239,18 +303,29 @@ document.getElementById('btn-keygen').addEventListener('click', async () => {
       'encrypted to it is gone permanently.';
     out.append(warning);
 
-    for (const [label, value] of [
-      ['Fingerprint', id.short],
-      ['Public identity, share this', id.public],
-      ['Private identity, keep this secret', id.private],
+    for (const [label, value, filename] of [
+      ['Fingerprint', id.short, null],
+      ['Public identity, share this', id.public, 'noisecrypt-public.txt'],
+      ['Private identity, keep this secret', id.private, 'noisecrypt-identity.key'],
     ]) {
       const heading = document.createElement('h3');
       heading.textContent = label;
+
+      // The page used to tell you to save the private identity and then offer no way
+      // to do it, leaving select-all-and-copy by hand as the only route to something it
+      // called unrecoverable. An instruction the interface does not support is not an
+      // instruction, it is a reproach.
+      const bar = document.createElement('div');
+      bar.className = 'keyactions';
+      bar.append(copyButton(value));
+      if (filename) bar.append(saveButton(value, filename));
+
       const box = document.createElement('textarea');
       box.readOnly = true;
       box.rows = label === 'Fingerprint' ? 1 : 4;
       box.value = value;
-      out.append(heading, box);
+
+      out.append(heading, bar, box);
     }
   } catch (err) {
     show(out, String(err), 'error');

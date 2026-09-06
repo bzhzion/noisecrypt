@@ -39,6 +39,21 @@
   - Honours `prefers-reduced-motion`, and every colour pair was measured rather than
     eyeballed: 6.39:1 at the lowest, against the 4.5:1 that WCAG 2.2 AA asks for.
 
+- **The page told you to save your private identity and gave you no way to save it.**
+  It called losing it unrecoverable, in red, above the key, and then left select-all-and-
+  copy by hand as the only route. An instruction an interface does not support is not an
+  instruction, it is a reproach.
+  - Every key now has a **Copy** button, and the two long ones a **Save to a file**
+    button. Both confirm briefly, because a copy with no visible effect leaves you
+    pressing the button again to be sure.
+  - The saved file is the key and a newline, nothing else, byte for byte what
+    `keygen -out` writes. Proved rather than assumed: a file in that exact shape was
+    handed to `open -identity` on the real binary and recovered the payload. A header or
+    a label for readability would have broken that silently.
+  - Clipboard access works because a page served from `127.0.0.1` counts as a secure
+    context, the same way https does, with a fallback for a browser that disagrees rather
+    than a button that is silently inert.
+
 - **The channel table was showing under every tab**, including "Identities", where it
   invited the reading that a channel is something to do with keys. It only ever concerned
   the dropdown in the video tab, and it now lives inside it: separated by a rule rather

@@ -425,6 +425,21 @@ label.inline input[type="checkbox"] {
   accent-color: var(--signal);
 }
 
+/* Copy and save, sitting between a key's heading and the key itself. */
+.keyactions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0 0 0.5rem;
+}
+
+.btn-small {
+  margin: 0;
+  padding: 0.4rem 0.9rem;
+  font-size: 0.68rem;
+  letter-spacing: 0.12em;
+}
+
 /* Output ------------------------------------------------------------------ */
 
 output {

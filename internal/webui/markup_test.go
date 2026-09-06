@@ -175,6 +175,37 @@ func TestLayoutSurvivesNarrowScreens(t *testing.T) {
 	}
 }
 
+// The page told you to save the private identity, called losing it unrecoverable, and
+// then offered no way to save it: select-all-and-copy by hand was the only route. An
+// instruction an interface does not support is not an instruction, it is a reproach.
+//
+// Checked here because the buttons are built in JavaScript, so nothing else in this
+// repository would notice them going away.
+func TestGeneratedKeysCanBeSaved(t *testing.T) {
+	script := asset(t, "app.js")
+
+	for _, needed := range []string{"copyButton", "saveButton", "clipboard.writeText"} {
+		if !strings.Contains(script, needed) {
+			t.Errorf("no %s: the page still tells you to save something it gives you no way to save", needed)
+		}
+	}
+
+	// The file has to be byte for byte what `keygen -out` writes, or an identity saved
+	// from the page will not work with -identity on the command line. Proved by hand
+	// against the real binary; pinned here so the newline is not tidied away later.
+	if !strings.Contains(script, `value + '\n'`) {
+		t.Error("the saved file does not end with a newline, so it no longer matches what keygen -out writes")
+	}
+	if !strings.Contains(script, "noisecrypt-identity.key") {
+		t.Error("the private identity has no filename of its own")
+	}
+
+	// A copy with no visible effect leaves you pressing the button again to be sure.
+	if !strings.Contains(script, "confirmOn") {
+		t.Error("copying and saving give no feedback")
+	}
+}
+
 func attr(tag, name string) string {
 	m := regexp.MustCompile(name + `="([^"]*)"`).FindStringSubmatch(tag)
 	if m == nil {
