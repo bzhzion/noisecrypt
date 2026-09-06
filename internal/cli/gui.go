@@ -15,6 +15,9 @@ func runGUI(env *Env, args []string) error {
 		return err
 	}
 
+	// The interface shows the version, and the version lives here.
+	webui.Version = Version
+
 	s, err := webui.New()
 	if err != nil {
 		return err

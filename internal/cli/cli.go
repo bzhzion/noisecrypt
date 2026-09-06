@@ -76,9 +76,17 @@ func Run(env *Env, args []string) int {
 		return 2
 	}
 
+	// Every spelling anyone actually types, rather than the three that happened to get
+	// written. `-help` in particular is what Go's own flag package prints in its usage
+	// line, so it is the form a Go user is most likely to try, and it exited 2 on
+	// "unknown command". A help flag that has to be guessed correctly is not help.
 	name := args[0]
-	if name == "-h" || name == "--help" || name == "help" {
+	switch name {
+	case "-h", "-help", "--help", "help":
 		usage(env.Stdout)
+		return 0
+	case "-v", "-version", "--version":
+		fmt.Fprintln(env.Stdout, Version)
 		return 0
 	}
 
@@ -114,6 +122,11 @@ func usage(w io.Writer) {
 		fmt.Fprintf(w, "  %-*s  %s\n", width, c.name, c.summary)
 	}
 	fmt.Fprintln(w, "\nRun 'noisecrypt <command> -h' for the flags of a command.")
+	fmt.Fprintln(w, "Add -version for the version, -help for this text.")
+	// Said here rather than discovered when a command fails. `encode`, `decode` and
+	// `simulate` shell out to FFmpeg; the other seven need nothing installed, and that
+	// distinction is invisible from a list of commands.
+	fmt.Fprintln(w, "\nencode, decode and simulate need FFmpeg on the system; nothing else does.")
 }
 
 // newFlagSet builds a flag set that reports errors through the command's error

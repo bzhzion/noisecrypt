@@ -45,6 +45,7 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	// The page needs the token for its own requests, and putting it in the document
 	// keeps it out of every later URL and therefore out of browser history.
 	body := strings.Replace(string(page), "{{TOKEN}}", s.token, 1)
+	body = strings.Replace(body, "{{VERSION}}", Version, 1)
 	// And the browser needs it for the stylesheet and the script, which it fetches on
 	// its own and without inheriting anything from the page's URL.
 	s.setCookie(w)
@@ -96,6 +97,11 @@ func (s *Server) handleProfiles(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
+// Version is the build's version string, set by the command that starts the server so
+// this package does not import the CLI. The page shows it because someone reporting a
+// problem from the interface had no way to say which build they were looking at.
+var Version = "dev"
+
 func (s *Server) handleKeygen(w http.ResponseWriter, r *http.Request) {
 	id, err := crypt.GenerateIdentity()
 	if err != nil {
@@ -120,6 +126,13 @@ type sealRequest struct {
 	to         string
 	signWith   string
 	noCompress bool
+
+	// The two that make a signature enforceable rather than merely reported. Without
+	// them the interface could tell you a container was unsigned and then hand it over
+	// anyway, so stripping a signature was as effective as forging one, which is the
+	// exact failure the signing design set out to prevent.
+	from             string
+	requireSignature bool
 }
 
 func readSealRequest(r *http.Request) (sealRequest, error) {
@@ -147,6 +160,9 @@ func readSealRequest(r *http.Request) (sealRequest, error) {
 		to:         strings.TrimSpace(r.FormValue("to")),
 		signWith:   strings.TrimSpace(r.FormValue("sign")),
 		noCompress: r.FormValue("noCompress") == "1",
+
+		from:             strings.TrimSpace(r.FormValue("from")),
+		requireSignature: r.FormValue("requireSignature") == "1",
 	}, nil
 }
 
@@ -278,7 +294,42 @@ func open(req sealRequest, sealed []byte) (container.Opened, int, error) {
 	if err != nil {
 		return container.Opened{}, http.StatusBadRequest, err
 	}
+
+	if code, err := checkSignature(req, opened); err != nil {
+		return container.Opened{}, code, err
+	}
 	return opened, http.StatusOK, nil
+}
+
+// checkSignature enforces what the caller asked of the container's origin.
+//
+// Both refusals happen after a successful decrypt, which is unavoidable: the signature
+// travels inside the ciphertext, precisely so that only the recipient learns who sent
+// it. So the plaintext exists in this process by the time we can judge it, and the only
+// thing that matters is that it is never handed back.
+func checkSignature(req sealRequest, opened container.Opened) (int, error) {
+	if req.from == "" && !req.requireSignature {
+		return http.StatusOK, nil
+	}
+	if opened.Signer == nil {
+		return http.StatusBadRequest, fmt.Errorf(
+			"a signature was required and this container carries none; nothing proves who produced it")
+	}
+	if req.from == "" {
+		return http.StatusOK, nil
+	}
+
+	expected, err := crypt.ParsePublicIdentity(req.from)
+	if err != nil {
+		return http.StatusBadRequest, fmt.Errorf("expected signer: %w", err)
+	}
+	// Fingerprints rather than the identities themselves, which is what the command
+	// line compares too: one comparison, one definition of the same signer.
+	if expected.Fingerprint() != opened.Signer.Fingerprint() {
+		return http.StatusBadRequest, fmt.Errorf(
+			"signed by %s, but %s was required", opened.Signer.Short(), expected.Short())
+	}
+	return http.StatusOK, nil
 }
 
 func writeOpened(w http.ResponseWriter, opened container.Opened) {

@@ -49,6 +49,28 @@ patched by CI at tag time and are never committed with a real version number.
   - Honours `prefers-reduced-motion`, and every colour pair was measured rather than
     eyeballed: 6.39:1 at the lowest, against the 4.5:1 that WCAG 2.2 AA asks for.
 
+### Discoverability, after asking what each surface can actually do
+
+- **`-help` did not work.** Help answered to `-h`, `--help` and `help`, and not to
+  `-help`, which is the spelling Go's own flag package prints and therefore the one a Go
+  user tries first: it exited 2 on "unknown command". Neither did `-version`, `--version`
+  or `-v`. All of them now do. A help flag that has to be guessed correctly is not help.
+- The help now names its one prerequisite: `encode`, `decode` and `simulate` shell out to
+  FFmpeg and the other seven need nothing installed. A list of commands cannot show that,
+  so a user met it as an error instead.
+- **The interface could report a signature but never demand one**, which made it strictly
+  weaker than the command line rather than merely smaller. It said who signed a container,
+  or that nobody had, and handed the contents over either way, so removing a signature
+  worked as well as forging one. Both decrypt forms now carry `requireSignature` and
+  `from`, with the five outcomes pinned by tests, including a valid signature by the
+  wrong person, which a check on "is it signed" alone waves through.
+- The interface **shows its version**. It previously said "Local instance", which the
+  reader already knew, and left someone reporting a problem unable to say which build
+  they were looking at.
+- The interface now **states what it cannot do** rather than letting a reader conclude
+  those things do not exist: `simulate`, the Argon2id parameters, the encoder knobs, and
+  reading a passphrase from a file or the environment.
+
 ### Fixed in the interface, after a proper look at it
 
 Four defects, none visible in a screenshot of a working page, all found by measuring it

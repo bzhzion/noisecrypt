@@ -195,11 +195,14 @@ document.getElementById('form-open').addEventListener('submit', async (event) =>
     }
     const signer = response.headers.get('X-NoiseCrypt-Signer');
     const name = await download(response, 'recovered.bin');
+    // An unsigned container that got this far was allowed through on purpose, since the
+    // form now offers to refuse one. Saying so points at the checkbox rather than
+    // leaving a warning the reader can do nothing about.
     show(
       out,
       signer
         ? `Recovered ${name}. Signature verified, signed by ${signer}.`
-        : `Recovered ${name}. Not signed: nothing proves who produced it.`,
+        : `Recovered ${name}. Not signed, and no signature was demanded: nothing proves who produced it.`,
       'ok',
     );
   } catch (err) {

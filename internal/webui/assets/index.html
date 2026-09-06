@@ -18,7 +18,7 @@
     <p class="tagline">Encrypt a file. Get it back, byte for byte.</p>
   </div>
   <p class="readout">
-    Local instance<br>
+    Version {{VERSION}}<br>
     <b>Loopback only</b>
   </p>
 </header>
@@ -86,6 +86,23 @@
     <textarea id="open-key" name="sign" rows="2" spellcheck="false"
               placeholder="noisecrypt-secret-v1:..."></textarea>
 
+    <fieldset>
+      <legend>Demand a signature</legend>
+      <label class="inline">
+        <input type="checkbox" id="open-require" name="requireSignature" value="1">
+        Refuse a container that carries no signature
+      </label>
+      <label for="open-from">And that it be signed by this identity</label>
+      <textarea id="open-from" name="from" rows="2" spellcheck="false"
+                placeholder="noisecrypt-public-v1:..."></textarea>
+      <p class="hint">
+        Leave both empty and you will be told who signed it, if anyone did, and given the
+        file either way. Fill one in and an unsigned or wrongly signed container is
+        refused instead. Being told is not the same as being protected: without this, a
+        removed signature works as well as a forged one.
+      </p>
+    </fieldset>
+
     <button type="submit" class="btn btn-primary">Decrypt</button>
   </form>
   <output id="out-open" role="status" aria-live="polite"></output>
@@ -150,6 +167,17 @@
     <textarea id="dec-key" name="sign" rows="2" spellcheck="false"
               placeholder="noisecrypt-secret-v1:..."></textarea>
 
+    <fieldset>
+      <legend>Demand a signature</legend>
+      <label class="inline">
+        <input type="checkbox" id="dec-require" name="requireSignature" value="1">
+        Refuse a video whose container carries no signature
+      </label>
+      <label for="dec-from">And that it be signed by this identity</label>
+      <textarea id="dec-from" name="from" rows="2" spellcheck="false"
+                placeholder="noisecrypt-public-v1:..."></textarea>
+    </fieldset>
+
     <button type="submit" class="btn btn-primary">Decode</button>
   </form>
   <output id="out-decode" role="status" aria-live="polite"></output>
@@ -202,6 +230,18 @@
     Served on your own machine, on the loopback interface, and not reachable from the
     network. Nothing on this page is fetched from anywhere else. Close the terminal to
     stop it.
+  </p>
+  <p>
+    <b>What this page cannot do.</b> Four things live only on the command line, said here
+    rather than left to be concluded absent.
+    <code>noisecrypt simulate</code> measures which re-encoding qualities a channel
+    survives, which is how the table above was filled in.
+    <code>-kdf-time</code>, <code>-kdf-memory</code> and <code>-kdf-lanes</code> tune the
+    work factor applied to a passphrase, and <code>-crf</code> and <code>-preset</code>
+    tune the video encoder. <code>-passphrase-file</code> and
+    <code>-passphrase-env</code> feed a passphrase from somewhere a script can reach.
+    Start with <code>noisecrypt -help</code>, then
+    <code>noisecrypt &lt;command&gt; -h</code>.
   </p>
 </footer>
 

@@ -268,6 +268,10 @@ tells whoever serves that font you are using this tool. And it holds a one-time 
 you never have to see: the address the binary opens already carries it, so a page you
 happen to have open in another tab cannot reach in and ask this one to decrypt something.
 
+The page can do everything the tool does, with four exceptions it names in its own
+footer rather than leaving you to discover: `simulate`, the Argon2id work factor, the
+video encoder settings, and feeding a passphrase from a file or the environment.
+
 One button on that page is worth pointing at: **what will it cost**. Turning a file into
 video takes as long as the video is long, and on the toughest channel a single mebibyte
 is minutes of footage. The interface will tell you the number of frames and the running
