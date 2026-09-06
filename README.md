@@ -457,7 +457,7 @@ in the package documentation of `internal/crypt`.
 
 ## Licence
 
-[BZ-1.1](LICENSE), the BREIZHZION Personal Use License. Source available rather than open
+[BZ-1.1](LICENSE.md), the BREIZHZION Personal Use License. Source available rather than open
 source: personal use by an individual is free, forks are permitted for reading and study,
 and commercial use or providing a service based on it is reserved to BREIZHZION or to a
 holder of a written commercial licence.

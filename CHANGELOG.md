@@ -49,6 +49,14 @@ patched by CI at tag time and are never committed with a real version number.
   - Honours `prefers-reduced-motion`, and every colour pair was measured rather than
     eyeballed: 6.39:1 at the lowest, against the 4.5:1 that WCAG 2.2 AA asks for.
 
+### Changed
+
+- The licence file is now `LICENSE.md`, matching the other public repositories in this
+  family and the canonical `BZ-1.1.md` it is copied from. The text is Markdown, so a name
+  without an extension made GitHub serve it as preformatted text with the `#` and `**`
+  visible. The name has no bearing on licence detection: GitHub reports BZ-1.1 as "Other"
+  either way, since it is not an SPDX-listed licence.
+
 ### Discoverability, after asking what each surface can actually do
 
 - **`-help` did not work.** Help answered to `-h`, `--help` and `help`, and not to
