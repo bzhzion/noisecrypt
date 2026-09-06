@@ -170,6 +170,21 @@
     profiles still recover the payload byte for byte. Re-verified against real re-encodes
     at 1920p, 854p and 426p, CRF 26 through 42: 0 unreadable everywhere.
 
+- The diagnostics added alongside the fix above **broke the build before they proved
+  anything**: two heavyweight tests in one package pushed it past the Windows runner's ten
+  minute budget, at 47 seconds locally. Local timings are not CI timings.
+  - One was removed outright, being strictly superseded by the other. The survivor now
+    uses a small payload and tries seeded payloads until one actually contains the event,
+    rather than a large payload that contains it by volume. **Shrinking a random payload
+    is how a test quietly stops testing**, so the seed is fixed and the test skips loudly
+    if no payload contains the case.
+  - Its `social-hd` subtest was dropped: the same event is 4.5 standard deviations out
+    there instead of 3.3, so it skipped every single time. A permanent skip costs CI time
+    and teaches nothing.
+  - Also fixed a measurement bug in the diagnostic itself: `image.Rect` canonicalises its
+    arguments, so building a delta with it silently reorders the values and reports the
+    wrong edge. It had me describing the defect on the top edge when it was the bottom.
+
 - **The frame-loss figure was quietly optimistic, and it is the one figure meant to
   reveal a channel getting worse.** Two different losses exist and only one was counted:
   frames the geometry could not *locate*, and frames it located and sampled whose shard
