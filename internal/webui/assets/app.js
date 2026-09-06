@@ -213,6 +213,50 @@ document.getElementById('form-open').addEventListener('submit', async (event) =>
   }
 });
 
+// Loading an identity from a file ------------------------------------------
+//
+// The page offered to save a key to a file and then insisted you paste it back by hand
+// the next time, which meant opening the file, selecting all, copying. The command line
+// has taken `-identity <file>` from the start, so the interface was the awkward one.
+//
+// Attached to every field that expects an identity rather than to a list of ids, so a
+// field added later gets it without anyone remembering to wire it up.
+for (const box of document.querySelectorAll('textarea[placeholder^="noisecrypt-"]')) {
+  const picker = document.createElement('input');
+  picker.type = 'file';
+  // No accept filter. Nothing forces an identity to be named .key or .txt, and a filter
+  // that hides the file you are looking for is worse than no filter at all.
+  picker.hidden = true;
+
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'btn btn-secondary btn-small';
+  button.textContent = 'Load from a file';
+  button.addEventListener('click', () => picker.click());
+
+  picker.addEventListener('change', async () => {
+    const file = picker.files[0];
+    if (!file) return;
+    try {
+      // Trimmed, because the file we write ends with a newline and so does anything
+      // `keygen -out` produced. The server trims too, but a textarea showing a stray
+      // blank line looks like a mistake the reader then goes hunting for.
+      box.value = (await file.text()).trim();
+      confirmOn(button, 'Loaded');
+    } catch (err) {
+      confirmOn(button, 'Unreadable');
+    } finally {
+      // Cleared so choosing the same file twice fires change again.
+      picker.value = '';
+    }
+  });
+
+  const bar = document.createElement('div');
+  bar.className = 'keyactions';
+  bar.append(button, picker);
+  box.parentNode.insertBefore(bar, box);
+}
+
 // Keys --------------------------------------------------------------------
 
 // confirmOn briefly replaces a button's label, because a copy that gives no sign of

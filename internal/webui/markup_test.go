@@ -206,6 +206,42 @@ func TestGeneratedKeysCanBeSaved(t *testing.T) {
 	}
 }
 
+// The page offered to save a key to a file and then made you paste it back by hand the
+// next time: open the file, select all, copy. The command line has taken a file since the
+// start, so the interface was the awkward one.
+//
+// The loader attaches itself to every field expecting an identity rather than to a list
+// of ids, so a field added later is covered without anyone remembering to wire it up.
+// That is the part worth pinning: a hand-written list would rot silently.
+func TestIdentityFieldsAcceptAFile(t *testing.T) {
+	script := asset(t, "app.js")
+	page := asset(t, "index.html")
+
+	if !strings.Contains(script, `textarea[placeholder^="noisecrypt-"]`) {
+		t.Error("the file loader is not attached by what a field is, so a new field will silently miss out")
+	}
+	if !strings.Contains(script, "Load from a file") {
+		t.Error("no way to load an identity from a file")
+	}
+	// The saved file ends with a newline. Pasting that straight in leaves a blank line
+	// the reader then goes hunting for.
+	if !strings.Contains(script, ").trim()") {
+		t.Error("a loaded identity is not trimmed, so the field shows a stray blank line")
+	}
+
+	// Every identity field must carry the placeholder the loader keys on, or it gets no
+	// loader and nothing anywhere would say so.
+	fields := regexp.MustCompile(`<textarea[^>]*name="(to|sign|from)"[^>]*>`).FindAllString(page, -1)
+	if len(fields) < 8 {
+		t.Errorf("found %d identity fields, expected the 8 the page has", len(fields))
+	}
+	for _, tag := range fields {
+		if !strings.Contains(tag, `placeholder="noisecrypt-`) {
+			t.Errorf("this identity field will get no file loader: %s", tag)
+		}
+	}
+}
+
 func attr(tag, name string) string {
 	m := regexp.MustCompile(name + `="([^"]*)"`).FindStringSubmatch(tag)
 	if m == nil {

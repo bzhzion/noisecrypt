@@ -39,6 +39,23 @@
   - Honours `prefers-reduced-motion`, and every colour pair was measured rather than
     eyeballed: 6.39:1 at the lowest, against the 4.5:1 that WCAG 2.2 AA asks for.
 
+- **An identity could be saved to a file and not loaded from one.** The interface
+  offered the save button added just above, then insisted you paste the key back by hand
+  the next time: open the file, select all, copy. The command line has taken
+  `-identity <file>` since the start, so the interface was the awkward one.
+  - All eight identity fields now carry a **Load from a file** button, on both routes and
+    on both halves of each.
+  - Attached to fields **by what they are** rather than by a hand-written list of ids, so
+    a field added later is covered without anyone remembering. A list would rot in
+    silence, which is what the test pins.
+  - The loaded value is trimmed, since the file this page writes ends with a newline and
+    a textarea showing a stray blank line looks like a fault the reader goes hunting for.
+  - No `accept` filter on the picker: nothing forces an identity to be named `.key`, and
+    a filter that hides the file you are looking for is worse than none.
+  - Proved end to end rather than by inspection: a container sealed on the command line
+    to a generated identity was opened in the interface with that identity loaded from
+    its file, without anything being pasted.
+
 - **The page told you to save your private identity and gave you no way to save it.**
   It called losing it unrecoverable, in red, above the key, and then left select-all-and-
   copy by hand as the only route. An instruction an interface does not support is not an
