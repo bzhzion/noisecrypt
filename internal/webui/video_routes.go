@@ -292,5 +292,9 @@ func (s *Server) handleDecode(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("X-NoiseCrypt-Frames", fmt.Sprint(d.Seen))
 	w.Header().Set("X-NoiseCrypt-Unreadable", fmt.Sprint(d.Unreadable))
+	// Frames located and sampled whose shard then failed its CRC. A different loss from
+	// Unreadable, and one that used to be reported nowhere, so this header could say
+	// zero on a video that had actually lost frames.
+	w.Header().Set("X-NoiseCrypt-Discarded", fmt.Sprint(d.Discarded()))
 	writeOpened(w, opened)
 }

@@ -140,6 +140,20 @@
   - Verified on a real re-encode round trip and not only in memory: 0 of 32 frames
     unreadable at 1920p and at 426p, CRF 26 and 34.
 
+- **The frame-loss figure was quietly optimistic, and it is the one figure meant to
+  reveal a channel getting worse.** Two different losses exist and only one was counted:
+  frames the geometry could not *locate*, and frames it located and sampled whose shard
+  then failed its CRC under every erasure combination the parity allowed. The second were
+  dropped at `if !ok { continue }` and counted nowhere, so a video that had genuinely lost
+  frames could be reported as losing none, in the command line and in the interface alike.
+  - `fec.Stats` now separates `Unparseable`, `Unrepairable` and `OutOfRange`, and both
+    surfaces report the total. `Decode` keeps its signature; `DecodeStats` is the new
+    entry point, so nothing had to be touched to gain the counter.
+  - This corrects a claim made a few entries above, on the interface's unreadable-frame
+    count: a mislocated frame does **not** make the error-correcting layer spend parity on
+    noise. The per-frame CRC already turns it into an erasure, which is the cheap kind of
+    loss. What was actually broken was the reporting, not the correction.
+
 - **`-help` did not work.** Help answered to `-h`, `--help` and `help`, and not to
   `-help`, which is the spelling Go's own flag package prints and therefore the one a Go
   user tries first: it exited 2 on "unknown command". Neither did `-version`, `--version`

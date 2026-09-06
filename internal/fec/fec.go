@@ -451,12 +451,53 @@ type ReadFrame struct {
 	Confidence []float64
 }
 
+// Stats records what a decode had to throw away.
+//
+// It exists because the number that was supposed to say how much margin was left was
+// quietly optimistic. The decoder counted frames it could not *locate*, and dropped
+// frames it located but could not *repair* without counting them anywhere, so a video
+// that lost several frames could be reported as losing none. Redundancy absorbing damage
+// silently is the system working; a report that hides it is the report failing.
+type Stats struct {
+	// Accepted is the number of frames that produced a verified shard.
+	Accepted int
+
+	// Unparseable frames had no readable header: the frame was located, but what was
+	// sampled from it was not a frame of this format.
+	Unparseable int
+
+	// Unrepairable frames had a header but no combination of erasures made the shard
+	// pass its CRC. That is the honest cost of a mislocated or badly damaged frame.
+	// The inter-frame code sees it as an erasure, which is the cheap kind of loss, so
+	// this is a margin indicator rather than a failure.
+	Unrepairable int
+
+	// OutOfRange frames named a shard index the layout does not have, or disagreed
+	// with the others about the payload length.
+	OutOfRange int
+}
+
+// Lost is every frame that contributed nothing.
+func (s Stats) Lost() int { return s.Unparseable + s.Unrepairable + s.OutOfRange }
+
 // Decode reconstructs the payload from whatever frames survived.
 //
 // Frames may arrive in any order, with duplicates, with gaps, and with damage. A
-// frame that cannot be repaired is dropped rather than reported, because on this
-// channel losing frames is the expected case and not an error condition.
+// frame that cannot be repaired is dropped rather than reported as an error, because on
+// this channel losing frames is the expected case. It is counted, though: see DecodeStats.
 func Decode(frames []ReadFrame, l Layout) ([]byte, error) {
+	payload, _, err := DecodeStats(frames, l)
+	return payload, err
+}
+
+// DecodeStats is Decode, and also says what it discarded.
+func DecodeStats(frames []ReadFrame, l Layout) ([]byte, Stats, error) {
+	var stats Stats
+	payload, err := decode(frames, l, &stats)
+	return payload, stats, err
+}
+
+func decode(frames []ReadFrame, l Layout, stats *Stats) ([]byte, error) {
 	if err := l.Validate(); err != nil {
 		return nil, err
 	}
@@ -478,19 +519,23 @@ func Decode(frames []ReadFrame, l Layout) ([]byte, error) {
 	for _, f := range frames {
 		h, ok := parseHeader(f.Bytes)
 		if !ok {
+			stats.Unparseable++
 			continue
 		}
 		shard, ok := recoverShard(f, l, intraEnc)
 		if !ok {
+			stats.Unrepairable++
 			continue
 		}
 		if h.shard >= l.InterData+l.InterParity {
+			stats.OutOfRange++
 			continue
 		}
 
 		if !sawLength {
 			totalLen, sawLength = h.totalLen, true
 		} else if h.totalLen != totalLen {
+			stats.OutOfRange++
 			// Frames disagreeing on the total length means two different payloads
 			// got mixed together. Trusting the first one seen would silently
 			// truncate or over-read; skipping the odd frames out keeps the block
@@ -504,6 +549,7 @@ func Decode(frames []ReadFrame, l Layout) ([]byte, error) {
 		if _, dup := blocks[h.block][h.shard]; !dup {
 			blocks[h.block][h.shard] = shard
 		}
+		stats.Accepted++
 	}
 
 	if !sawLength {

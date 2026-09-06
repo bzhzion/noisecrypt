@@ -200,6 +200,14 @@ func runDecode(env *Env, args []string) error {
 		return err
 	}
 
+	// Said after the decode because it is only known then, and said even on success:
+	// this is the number that reveals a channel getting worse, and it was reported
+	// nowhere at all until now.
+	if lost := d.Discarded(); lost > 0 {
+		fmt.Fprintf(env.Stdout,
+			"  %d further frames were located but could not be repaired, and were skipped.\n", lost)
+	}
+
 	opened, err := openSealed(env, sealed, openOptions{
 		identity: *identity, from: *from, requireSignature: *requireSig,
 	}, pass)

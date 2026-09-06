@@ -135,6 +135,9 @@ type Decoder struct {
 	// decode succeeds, because that is the difference between comfortable and lucky.
 	Seen       int
 	Unreadable int
+
+	// Stats is what the error-correcting layer discarded, filled in by Finish.
+	Stats fec.Stats
 }
 
 // NewDecoder starts a decode.
@@ -171,5 +174,18 @@ func (d *Decoder) Finish() ([]byte, error) {
 	if len(d.frames) == 0 {
 		return nil, fmt.Errorf("codec: none of the %d frames seen were readable", d.Seen)
 	}
-	return fec.Decode(d.frames, d.c.layout)
+	payload, stats, err := fec.DecodeStats(d.frames, d.c.layout)
+	d.Stats = stats
+	return payload, err
 }
+
+// Discarded is every frame that reached the error-correcting layer and contributed
+// nothing, which is a different loss from Unreadable and used to be reported nowhere.
+//
+// Unreadable counts frames the geometry could not locate. Discarded counts frames it
+// located and sampled, whose shard then failed its CRC under every erasure combination
+// the parity allowed. A mislocated frame lands here, and so does a badly damaged one.
+// Both are erasures to the inter-frame code, which is the cheap kind of loss, so this is
+// a margin indicator and not a failure. Reporting only Unreadable let a video that lost
+// frames be described as losing none.
+func (d *Decoder) Discarded() int { return d.Stats.Lost() }

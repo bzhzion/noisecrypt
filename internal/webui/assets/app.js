@@ -346,8 +346,14 @@ document.getElementById('form-decode').addEventListener('submit', async (event) 
     // The unreadable count is reported even on success, because it is the one number
     // that says how much margin was left. Redundancy absorbing damage silently is the
     // system working, and also the thing you want to know before trusting it again.
+    const dropped = response.headers.get('X-NoiseCrypt-Discarded');
     let text = `Recovered ${name} from ${seen} frames`;
-    text += bad === '0' ? ', none unreadable.' : `, ${bad} unreadable and corrected.`;
+    text += bad === '0' ? ', none unreadable' : `, ${bad} unreadable`;
+    // Two different losses, both reported. A frame the geometry could not locate and a
+    // frame whose shard failed its CRC are not the same event, and only the first used
+    // to appear anywhere: this line could say "none unreadable" on a video that had lost
+    // frames all the same.
+    text += dropped === '0' ? ' and none discarded.' : ` and ${dropped} discarded, all corrected.`;
     text += signer
       ? ` Signature verified, signed by ${signer}.`
       : ' Not signed: nothing proves who produced it.';
