@@ -33,7 +33,7 @@
 <main>
 
 <section id="panel-seal" role="tabpanel" aria-labelledby="tab-seal">
-  <span class="step" data-index="01">Encrypt a file</span>
+  <h2 class="step" data-index="01">Encrypt a file</h2>
   <form id="form-seal">
     <label for="seal-file">File</label>
     <input type="file" id="seal-file" name="file" required>
@@ -68,13 +68,13 @@
       </label>
     </fieldset>
 
-    <button type="submit">Encrypt</button>
+    <button type="submit" class="btn btn-primary">Encrypt</button>
   </form>
   <output id="out-seal" role="status" aria-live="polite"></output>
 </section>
 
 <section id="panel-open" role="tabpanel" aria-labelledby="tab-open" hidden>
-  <span class="step" data-index="02">Recover a file</span>
+  <h2 class="step" data-index="02">Recover a file</h2>
   <form id="form-open">
     <label for="open-file">Container</label>
     <input type="file" id="open-file" name="file" accept=".ncry" required>
@@ -86,7 +86,7 @@
     <textarea id="open-key" name="sign" rows="2" spellcheck="false"
               placeholder="noisecrypt-secret-v1:..."></textarea>
 
-    <button type="submit">Decrypt</button>
+    <button type="submit" class="btn btn-primary">Decrypt</button>
   </form>
   <output id="out-open" role="status" aria-live="polite"></output>
 </section>
@@ -94,7 +94,7 @@
 <section id="panel-video" role="tabpanel" aria-labelledby="tab-video" hidden>
   <p id="no-ffmpeg" class="warning" hidden></p>
 
-  <span class="step" data-index="03">Carry a file as video</span>
+  <h2 class="step" data-index="03">Carry a file as video</h2>
   <form id="form-encode">
     <label for="enc-file">File</label>
     <input type="file" id="enc-file" name="file" required>
@@ -125,8 +125,8 @@
     </fieldset>
 
     <div class="row">
-      <button type="button" id="btn-estimate" class="action">What will it cost</button>
-      <button type="submit">Encode</button>
+      <button type="button" id="btn-estimate" class="btn btn-secondary">What will it cost</button>
+      <button type="submit" class="btn btn-primary">Encode</button>
     </div>
     <p class="hint">
       Ask what it costs before spending it. A file on the toughest channel becomes
@@ -135,7 +135,7 @@
   </form>
   <output id="out-encode" role="status" aria-live="polite"></output>
 
-  <span class="step" data-index="04">Recover a file from a video</span>
+  <h2 class="step" data-index="04">Recover a file from a video</h2>
   <form id="form-decode">
     <label for="dec-file">Video</label>
     <input type="file" id="dec-file" name="file" accept="video/*" required>
@@ -150,23 +150,30 @@
     <textarea id="dec-key" name="sign" rows="2" spellcheck="false"
               placeholder="noisecrypt-secret-v1:..."></textarea>
 
-    <button type="submit">Decode</button>
+    <button type="submit" class="btn btn-primary">Decode</button>
   </form>
   <output id="out-decode" role="status" aria-live="polite"></output>
 </section>
 
 <section id="panel-keys" role="tabpanel" aria-labelledby="tab-keys" hidden>
-  <span class="step" data-index="05">Generate an identity</span>
+  <h2 class="step" data-index="05">Generate an identity</h2>
   <p class="hint">
     Four keys: two for encryption and two for signing, one classical and one
     post-quantum in each pair. Break one and you still need the other.
   </p>
-  <button id="btn-keygen" type="button" class="action">Generate</button>
+  <button id="btn-keygen" type="button" class="btn btn-primary panel-action">Generate</button>
   <output id="out-keys" role="status" aria-live="polite"></output>
 </section>
 
 <section id="panel-profiles">
-  <h2>Channel profiles</h2>
+  <h2 id="profiles-heading">Channel profiles</h2>
+  <!-- A five column data table cannot reflow into 320 CSS pixels, and squeezing it would
+       destroy the comparison it exists for. WCAG 1.4.10 exempts content that needs two
+       dimensions for its meaning, on condition it scrolls in its own region rather than
+       taking the whole page with it. tabindex makes that region reachable by keyboard,
+       which is the part usually forgotten: a scroll container nobody can focus is one
+       nobody can scroll without a mouse. -->
+  <div class="scroll-x" role="region" aria-labelledby="profiles-heading" tabindex="0">
   <table id="profiles">
     <thead>
       <tr>
@@ -179,6 +186,7 @@
     </thead>
     <tbody></tbody>
   </table>
+  </div>
   <p class="hint">
     <b>Measured</b> says what a channel has actually been carried across, not how much
     anyone trusts it. <code>platform</code> means a container went up to a real service

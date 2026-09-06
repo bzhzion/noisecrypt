@@ -107,15 +107,43 @@ async function errorFrom(response) {
   }
 }
 
-// Tabs.
+// Tabs --------------------------------------------------------------------
+//
+// The keyboard half of this was missing, and its absence was worse than not using the
+// pattern at all. Declaring role="tab" tells a screen reader "this is a tab list, the
+// arrow keys move between them, one stop holds them all in the page's tab order". None
+// of that was true: four separate tab stops, arrow keys inert. Plain buttons with no
+// role would have been more honest and more usable.
+//
+// So: a roving tabindex, arrows, Home and End, per the ARIA authoring practices. Content
+// is not moved into the panels, so activation on focus is safe and is what the practices
+// prefer, the alternative being a user who arrows past four tabs and reaches none.
 const tabs = [...document.querySelectorAll('[role="tab"]')];
-tabs.forEach((tab) => {
-  tab.addEventListener('click', () => {
-    tabs.forEach((t) => {
-      const selected = t === tab;
-      t.setAttribute('aria-selected', String(selected));
-      document.getElementById(t.getAttribute('aria-controls')).hidden = !selected;
-    });
+
+function selectTab(tab, moveFocus = true) {
+  tabs.forEach((t) => {
+    const selected = t === tab;
+    t.setAttribute('aria-selected', String(selected));
+    // Exactly one tab is reachable by Tab; the arrows reach the rest. Without this the
+    // tab list is four stops on the way to the form, every time.
+    t.tabIndex = selected ? 0 : -1;
+    document.getElementById(t.getAttribute('aria-controls')).hidden = !selected;
+  });
+  if (moveFocus) tab.focus();
+}
+
+tabs.forEach((tab, i) => {
+  tab.tabIndex = tab.getAttribute('aria-selected') === 'true' ? 0 : -1;
+  tab.addEventListener('click', () => selectTab(tab, false));
+  tab.addEventListener('keydown', (event) => {
+    const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[event.key];
+    let target = null;
+    if (step) target = tabs[(i + step + tabs.length) % tabs.length];
+    else if (event.key === 'Home') target = tabs[0];
+    else if (event.key === 'End') target = tabs[tabs.length - 1];
+    if (!target) return;
+    event.preventDefault();
+    selectTab(target);
   });
 });
 

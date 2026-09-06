@@ -156,9 +156,12 @@ section[role="tabpanel"],
   to   { opacity: 1; transform: none; }
 }
 
+/* A step is a heading, so a screen reader user can navigate the page by structure. It
+   was a span, which carries none, and the video panel has two of them. */
 .step {
   display: block;
-  margin-bottom: 1.5rem;
+  margin: 0 0 1.5rem;
+  font-weight: 400;
   color: var(--signal);
   font-size: 0.68rem;
   letter-spacing: 0.22em;
@@ -169,8 +172,12 @@ section[role="tabpanel"],
 
 /* A second step inside the same panel needs a rule and room above it, or it reads as a
    caption for the paragraph it follows rather than as the start of something new. The
-   video panel is the only place two steps share a panel, and it is where this showed. */
-.step:not(:first-child) {
+   video panel is the only place two steps share a panel, and it is where this showed.
+
+   :first-of-type rather than :first-child, because the video panel opens with a hidden
+   banner: a structural selector does not care that an element is hidden, so the first
+   step would have drawn a rule directly under the tab bar. */
+.step:not(:first-of-type) {
   margin-top: 3.5rem;
   padding-top: 2.5rem;
   border-top: 1px solid var(--rule);
@@ -249,9 +256,8 @@ select option { background: var(--ink); color: var(--paper); }
   display: flex;
   flex-wrap: wrap;
   gap: 0.8rem;
-  align-items: center;
+  align-items: stretch;
 }
-.row button { margin: 0; }
 
 /* A disabled control has to look unavailable rather than merely feel unresponsive. */
 button:disabled, input:disabled, select:disabled {
@@ -288,28 +294,73 @@ input[type="file"]::file-selector-button {
 
 /* Actions ----------------------------------------------------------------- */
 
-button[type="submit"], .action {
-  margin-top: 1.9rem;
+/* Buttons are styled by their role in the interface, never by their HTML type.
+   `button[type="submit"]` was doing the job of "the important one", which held only
+   until a form had two buttons: the estimate, marked with a class, and the encode,
+   matched by the attribute. The attribute selector outranked `.row button` and the class
+   did not, so the two sat at different heights, and the outlined style made the
+   measuring button look heavier than the acting one. Visual weight has to follow
+   importance, and importance is not something an attribute knows. */
+.btn {
   padding: 0.8rem 1.6rem;
   border: 1px solid var(--signal);
   border-radius: 2px;
-  background: transparent;
-  color: var(--signal);
   font: inherit;
   font-size: 0.76rem;
   font-weight: 700;
   letter-spacing: 0.16em;
   text-transform: uppercase;
   cursor: pointer;
-  transition: background 160ms ease, color 160ms ease;
+  transition: background 160ms ease, color 160ms ease, border-color 160ms ease;
 }
 
-button[type="submit"]:hover:not([disabled]), .action:hover:not([disabled]) {
+/* One primary per form, filled, so the thing to do next is the thing you see. */
+.btn-primary {
   background: var(--signal);
   color: var(--ink);
 }
+.btn-primary:hover:not([disabled]) {
+  background: color-mix(in srgb, var(--signal) 82%, white);
+  border-color: color-mix(in srgb, var(--signal) 82%, white);
+}
+
+/* Secondary: same geometry, quieter. Same geometry matters as much as the colour, since
+   two buttons of different heights read as two unrelated things. */
+.btn-secondary {
+  background: transparent;
+  color: var(--signal);
+}
+.btn-secondary:hover:not([disabled]) {
+  background: color-mix(in srgb, var(--signal) 14%, transparent);
+}
+
+/* The gap belongs to the group, not to the button, which is what let one button keep a
+   margin its neighbour had lost. */
+form .btn, .panel-action { margin-top: 1.9rem; }
+.row { margin-top: 1.9rem; }
+.row .btn { margin-top: 0; }
 
 button[disabled] { opacity: 0.45; cursor: progress; }
+
+/* A data table keeps its own scrolling rather than dragging the page sideways. */
+.scroll-x {
+  overflow-x: auto;
+  /* Nothing is more disorienting than a focus ring on a region with no visible reason
+     to be focusable, so the region says why it is: a rule that appears when it holds
+     focus, in the same colour as every other focus indicator on the page. */
+  outline-offset: 2px;
+}
+.scroll-x table { min-width: 30rem; }
+
+/* The checkbox itself is 13 px, which no pointer hits reliably. The label wraps it, so
+   the real target is the whole line, but the visible control still has to be worth
+   aiming at. */
+label.inline { min-height: 2.75rem; }
+label.inline input[type="checkbox"] {
+  width: 1.15rem;
+  height: 1.15rem;
+  accent-color: var(--signal);
+}
 
 /* Output ------------------------------------------------------------------ */
 

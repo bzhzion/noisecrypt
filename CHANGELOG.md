@@ -49,6 +49,34 @@ patched by CI at tag time and are never committed with a real version number.
   - Honours `prefers-reduced-motion`, and every colour pair was measured rather than
     eyeballed: 6.39:1 at the lowest, against the 4.5:1 that WCAG 2.2 AA asks for.
 
+### Fixed in the interface, after a proper look at it
+
+Four defects, none visible in a screenshot of a working page, all found by measuring it
+rather than admiring it.
+
+- **The tab list claimed a keyboard behaviour it did not have.** `role="tab"` tells a
+  screen reader the arrow keys move between tabs and that one stop holds them all in the
+  page's tab order. Neither was true: four separate stops, arrows inert. Plain buttons
+  with no role would have been *more* usable than the pattern half-applied. Now a roving
+  tabindex with arrows, Home and End, per the ARIA authoring practices.
+- **Steps were spans, so the page had one heading.** No navigation by structure, and the
+  video panel holds two sections that had no heading at all.
+- **Buttons were styled by their HTML type**, which worked until a form had two of them.
+  `button[type="submit"]` outranked `.row button` on specificity and `.action` did not,
+  so the two sat at different heights, and the outlined style made the *measuring* button
+  look heavier than the *acting* one. Importance is not something an attribute knows:
+  buttons now declare it, one filled primary per form.
+- **Horizontal scrolling at 320 CSS pixels**, WCAG 1.4.10, caused by the five column
+  profiles table. Squeezing it would destroy the comparison it exists for, and the
+  criterion exempts content that needs two dimensions, so it scrolls in its own region
+  instead. That region is focusable, which is the part usually forgotten: a scroll
+  container nobody can focus is one nobody can scroll without a mouse.
+- The compression checkbox was 13 px, under the 24 px floor of WCAG 2.2 AA 2.5.8.
+- New `markup_test.go`: labels, tab and panel wiring, headings, keyboard handling and
+  button roles, each proved red against the real defect before being kept. One of those
+  proofs failed and improved the test: prefixing `ArrowRight` to `XArrowRight` did not
+  turn it red, because a substring check accepts that.
+
 ### Measured, and deliberately not changed
 
 - **There is no third, denser social profile**, and that is now a result rather than an
