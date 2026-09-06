@@ -1,4 +1,21 @@
+# Changelog
+
+All notable changes to this project are documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+Versions live in git tags only. `go.mod` and any embedded version string are
+patched by CI at tag time and are never committed with a real version number.
+
 ## [Unreleased]
+
+## [0.2.0] - 2026-09-06
+
+Everything in this release exists because someone who had never used the tool sat down and
+tried to. Their questions found six defects that were invisible from the inside, and the
+interface, the documentation and two pieces of the codec are what came out of it.
+
 
 ### Added
 
