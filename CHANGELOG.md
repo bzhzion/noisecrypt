@@ -33,6 +33,12 @@ patched by CI at tag time and are never committed with a real version number.
   - Honours `prefers-reduced-motion`, and every colour pair was measured rather than
     eyeballed: 6.39:1 at the lowest, against the 4.5:1 that WCAG 2.2 AA asks for.
 
+- Minimum Go raised to **1.26.1**. Adding an HTTP server made fifteen standard library
+  vulnerabilities *reachable* that had never been reachable before, all of them fixed in
+  that release. Worth recording as the moment the dependency scanner paid for itself:
+  nothing in this repository's own code changed for the worse, and the finding was real
+  anyway.
+
 - **Optional digital signatures**, so a container can prove who produced it rather than
   only that somebody knew the recipient's public key. `-sign` when encrypting, `-from`
   or `-require-signature` when decrypting.
