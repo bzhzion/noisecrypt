@@ -225,9 +225,8 @@ func runEstimate(env *Env, args []string) error {
 			humanBytes(int64(p.PayloadBytesPerFrame())), humanBytes(int64(e.BytesPerSec)))
 		fmt.Fprintf(env.Stdout, "           %d frames, %s of video at %d fps\n",
 			e.Frames, humanDuration(e.Duration), p.FPS)
-		if !p.Verified {
-			fmt.Fprintln(env.Stdout, "           parameters not yet measured against a real re-encoding pass")
-		}
+		fmt.Fprintf(env.Stdout, "           measured: %s (%s)\n",
+			p.Evidence, p.EvidenceNote)
 		fmt.Fprintln(env.Stdout)
 	}
 
@@ -244,9 +243,10 @@ func runProfiles(env *Env, args []string) error {
 		fmt.Fprintf(env.Stdout, "%s\n  %s\n", p.Name, p.Summary)
 		fmt.Fprintf(env.Stdout, "  %dx%d at %d fps, %d px cells, %d levels, %.0f%% parity\n",
 			p.Width, p.Height, p.FPS, p.CellSize, p.Levels, p.Redundancy()*100)
-		fmt.Fprintf(env.Stdout, "  %s per frame, %s/s\n\n",
+		fmt.Fprintf(env.Stdout, "  %s per frame, %s/s\n",
 			humanBytes(int64(p.PayloadBytesPerFrame())),
 			humanBytes(int64(p.PayloadBytesPerFrame()*p.FPS)))
+		fmt.Fprintf(env.Stdout, "  measured: %s (%s)\n\n", p.Evidence, p.EvidenceNote)
 	}
 	return nil
 }

@@ -57,9 +57,54 @@ type Profile struct {
 	// being dropped by rate conversion or cuts.
 	InterData, InterParity int
 
-	// Verified records whether this geometry has been measured against a real
-	// platform round trip, as opposed to a local re-encode or an educated guess.
-	Verified bool
+	// Evidence records what this geometry has actually been measured against.
+	//
+	// It used to be a boolean named Verified, and the boolean was quietly wrong about
+	// Archive. A platform round trip was the only thing it counted, so Archive read as
+	// false, which alongside two profiles reading true says "not tested yet" when the
+	// truth is that Archive has no platform to be tested against: it targets channels
+	// nobody re-encodes, and it *was* measured, locally, against real H.264.
+	//
+	// Two states cannot express three situations. A boolean here forces "measured
+	// elsewhere" and "not measured" into the same value, which is the shape of claim
+	// this file exists to avoid making.
+	Evidence Evidence
+
+	// EvidenceNote is the one-line detail behind Evidence: which platform, or how far
+	// the local re-encode was pushed. Displayed as-is, so it stays short.
+	EvidenceNote string
+}
+
+// Evidence is how far a profile's geometry has been carried against something real.
+type Evidence int
+
+const (
+	// EvidenceNone means the geometry is still an educated guess.
+	EvidenceNone Evidence = iota
+
+	// EvidenceLocal means it survived a real encoder locally, but no platform. For a
+	// profile whose whole premise is a channel nobody re-encodes, this is the ceiling
+	// of what can be measured, not a step short of it.
+	EvidenceLocal
+
+	// EvidencePlatform means a container went up to a real platform, came back through
+	// its rendition ladder, and decoded byte for byte.
+	EvidencePlatform
+)
+
+// Verified reports whether the geometry has been measured against a real platform.
+// Kept because that is a genuinely different question from "has it been measured".
+func (e Evidence) Verified() bool { return e == EvidencePlatform }
+
+func (e Evidence) String() string {
+	switch e {
+	case EvidencePlatform:
+		return "platform"
+	case EvidenceLocal:
+		return "local"
+	default:
+		return "unmeasured"
+	}
 }
 
 // Archive targets channels we control: a file on a drive, in object storage, on a
@@ -81,7 +126,11 @@ var Archive = Profile{
 	IntraParityRatio: 0.07,
 	InterData:        64,
 	InterParity:      6,
-	Verified:         false,
+	// No platform round trip, and there never will be one: this profile exists for
+	// channels that do not re-encode. Measured against a real H.264 pass instead,
+	// which is the strongest evidence its premise admits.
+	Evidence:     EvidenceLocal,
+	EvidenceNote: "H.264 to CRF 23",
 }
 
 // Social targets platforms that re-encode aggressively: vertical video, heavy
@@ -130,7 +179,8 @@ var Social = Profile{
 	IntraParityRatio: 0.25,
 	InterData:        24,
 	InterParity:      8,
-	Verified:         true, // YouTube Shorts, every rendition, 2026-09-05
+	Evidence:     EvidencePlatform, // 2026-09-05
+	EvidenceNote: "YouTube, 9 renditions",
 }
 
 // SocialHD trades the very bottom of a platform's rendition ladder for four and a half
@@ -196,7 +246,8 @@ var SocialHD = Profile{
 	IntraParityRatio: 0.25,
 	InterData:        24,
 	InterParity:      8,
-	Verified:         true, // YouTube Shorts, all ten renditions, zero lost frames, 2026-09-05
+	Evidence:     EvidencePlatform, // zero lost frames, 2026-09-05
+	EvidenceNote: "YouTube, 10 renditions",
 }
 
 var registry = map[string]Profile{

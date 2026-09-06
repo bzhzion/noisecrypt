@@ -188,20 +188,37 @@ func TestRedundancyIsDerivedNotDeclared(t *testing.T) {
 	}
 }
 
-// TestVerifiedFlagMatchesWhatWasMeasured pins the one claim a user cannot check for
-// themselves. `social` has been through a real YouTube round trip; `archive` has only
-// ever been re-encoded locally, and its channel is one that does not re-encode at all,
-// so there is nothing to verify it against. Flipping either flag without doing the
-// measurement should break this test rather than quietly change what the tool claims.
-func TestVerifiedFlagMatchesWhatWasMeasured(t *testing.T) {
-	if !Social.Verified {
-		t.Error("social was measured against every YouTube Shorts rendition on 2026-09-05; the flag should say so")
+// TestEvidenceMatchesWhatWasMeasured pins the one claim a user cannot check for
+// themselves. `social` and `social-hd` have been through a real YouTube round trip;
+// `archive` has only ever been re-encoded locally, and its channel is one that does not
+// re-encode at all, so there is nothing to carry it across. Raising any of these without
+// doing the measurement should break this test rather than quietly change what the tool
+// claims.
+//
+// The distinction this test asserts is exactly the one the previous boolean could not
+// hold: EvidenceLocal is not a weaker EvidencePlatform, it is the ceiling of what
+// Archive's premise allows, and reporting it as "not verified" understated a real
+// measurement.
+func TestEvidenceMatchesWhatWasMeasured(t *testing.T) {
+	if Social.Evidence != EvidencePlatform {
+		t.Error("social was measured against every YouTube Shorts rendition on 2026-09-05")
 	}
-	if Archive.Verified {
-		t.Error("archive has only been re-encoded locally, never through a platform; it must not claim to be verified")
+	if SocialHD.Evidence != EvidencePlatform {
+		t.Error("social-hd recovered every YouTube rendition on 2026-09-05, including 144x256")
 	}
-	if !SocialHD.Verified {
-		t.Error("social-hd recovered every YouTube rendition on 2026-09-05, including 144x256; the flag should say so")
+	if Archive.Evidence != EvidenceLocal {
+		t.Errorf("archive was measured locally against real H.264, and nothing more: got %v", Archive.Evidence)
+	}
+	if Archive.Evidence.Verified() {
+		t.Error("archive has never been through a platform; it must not claim to be verified")
+	}
+
+	// A claim with no detail behind it is the shape of claim this package exists to
+	// avoid making.
+	for _, p := range All() {
+		if p.EvidenceNote == "" {
+			t.Errorf("%s states evidence %v with nothing to back it", p.Name, p.Evidence)
+		}
 	}
 }
 

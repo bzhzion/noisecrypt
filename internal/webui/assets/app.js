@@ -240,12 +240,14 @@ document.getElementById('btn-keygen').addEventListener('click', async () => {
         `${p.perFrame.toLocaleString()} B`,
         `${Math.round(p.overhead * 100)} %`,
         `${(p.bytesPerSecond / 1024).toFixed(1)} KiB/s`,
-        p.verified ? 'verified' : 'not yet',
+        // Three states, not two. "archive" has no platform to be carried across, by
+        // design, so a yes/no column reads its local measurement as a gap.
+        `${p.evidence}, ${p.evidenceNote}`,
       ];
       cells.forEach((text, i) => {
         const cell = document.createElement('td');
         cell.textContent = text;
-        if (i === 4) cell.className = p.verified ? 'yes' : 'no';
+        if (i === 4) cell.className = p.evidence === 'platform' ? 'yes' : 'no';
         row.append(cell);
       });
       row.title = p.summary;

@@ -297,7 +297,8 @@ func runSimulate(env *Env, args []string) error {
 		// A candidate is by definition not the measured profile it came from, and
 		// saying so on every line is the whole point of the flag.
 		p.Name = p.Name + "-candidate"
-		p.Verified = false
+		p.Evidence = profile.EvidenceNone
+		p.EvidenceNote = "tuned by hand"
 		if err := p.Validate(); err != nil {
 			return err
 		}

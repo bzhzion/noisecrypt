@@ -33,6 +33,22 @@ patched by CI at tag time and are never committed with a real version number.
   - Honours `prefers-reduced-motion`, and every colour pair was measured rather than
     eyeballed: 6.39:1 at the lowest, against the 4.5:1 that WCAG 2.2 AA asks for.
 
+### Changed
+
+- A profile now reports **what it was measured against** rather than a yes-or-no
+  `Verified` flag. Three states: `platform` (a container went up to a real service and
+  came back through its rendition ladder), `local` (a real encoder, no platform), and
+  `unmeasured`, each with a one-line note behind it.
+  - The boolean was understating `archive`. It counted platform round trips only, so
+    `archive` read as false, and false next to two profiles reading true says "not tested
+    yet". The truth is that `archive` targets channels nobody re-encodes, so it has no
+    platform to be carried across, and it *was* measured, locally, up to CRF 23. Two
+    states cannot hold three situations: "measured elsewhere" and "not measured" were
+    collapsed into the same value, which is precisely the kind of claim this package
+    exists to avoid making.
+
+### Fixed
+
 - Minimum Go raised to **1.26.1**. Adding an HTTP server made fifteen standard library
   vulnerabilities *reachable* that had never been reachable before, all of them fixed in
   that release. Worth recording as the moment the dependency scanner paid for itself:

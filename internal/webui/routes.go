@@ -79,7 +79,8 @@ func (s *Server) handleProfiles(w http.ResponseWriter, r *http.Request) {
 		Summary   string  `json:"summary"`
 		PerFrame  int     `json:"perFrame"`
 		Overhead  float64 `json:"overhead"`
-		Verified  bool    `json:"verified"`
+		Evidence  string  `json:"evidence"`
+		Note      string  `json:"evidenceNote"`
 		BytesPerS int     `json:"bytesPerSecond"`
 	}
 	out := make([]entry, 0, 3)
@@ -87,7 +88,8 @@ func (s *Server) handleProfiles(w http.ResponseWriter, r *http.Request) {
 		out = append(out, entry{
 			Name: p.Name, Summary: p.Summary,
 			PerFrame: p.PayloadBytesPerFrame(), Overhead: p.Redundancy(),
-			Verified: p.Verified, BytesPerS: p.PayloadBytesPerFrame() * p.FPS,
+			Evidence: p.Evidence.String(), Note: p.EvidenceNote,
+			BytesPerS: p.PayloadBytesPerFrame() * p.FPS,
 		})
 	}
 	writeJSON(w, http.StatusOK, out)
