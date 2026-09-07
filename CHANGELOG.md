@@ -12,6 +12,31 @@ patched by CI at tag time and are never committed with a real version number.
 
 ### Fixed
 
+- **The binary's Windows properties said `dev`, and 0.5.0 shipped that way.** Found while
+  installing the release on a real machine: `noisecrypt version` correctly reported 0.5.0
+  while right-clicking the file showed `dev` as both file version and product version.
+  **Same family as the installer's `0.0.0.0`, fixed earlier the same day, one file away**,
+  and missed then because only the installer was looked at. Two paths to the same number,
+  so two defects and now two checks.
+  - The cause is a deliberate tradeoff that stays: the `.syso` resources are **committed**
+    so `go build ./cmd/noisecrypt` remains the single command the README promises, and
+    `winres/winres.json` carries `dev` because the version lives in git tags and never in
+    a committed file. The committed file is right to say `dev`; the release is what has to
+    stamp it. It now does, without committing the result.
+  - The version is passed explicitly rather than through go-winres' `git-tag` special
+    value, which yields a `git describe` string such as `v0.5.0-1-g617dfc8`: the installer
+    says `0.5.0`, and two files describing one build must not print different numbers.
+  - Checked by a new step, and **the check was proved red on the real case** before being
+    kept: a binary built from the committed resource fails it. The runner is Ubuntu and
+    cannot query a PE resource, but it does not need to, since `RT_VERSION` stores its
+    strings as UTF-16LE. It asserts the presence of the right value rather than the absence
+    of `dev`, a word too short to conclude anything from.
+  - Both icon groups were verified to survive the regeneration, pixel for pixel, 869
+    differing pixels of 1024 between the application tile and the container page. A byte
+    comparison of the resource was tried first and discarded as meaningless: changing the
+    length of the version string shifts every offset after it, so 10% of the file differs
+    for a reason that says nothing about the icons.
+
 - **`latest.json` advertised 0.3.1 on the most-read platform key, and 0.5.0 published that
   way.** Found by checking the served manifest after the release instead of trusting the
   green workflow. It carried **two naming conventions at once**: a current set

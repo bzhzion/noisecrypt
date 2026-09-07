@@ -82,6 +82,32 @@ jobs:
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
+      # ⚠️ Sans ceci, les proprietes Windows du binaire annoncent `dev`. La 0.5.0 est
+      # partie comme ca : `noisecrypt version` disait bien 0.5.0, injecte par ldflags,
+      # mais un clic droit sur le fichier montrait « dev » en version de fichier ET en
+      # version de produit. Meme famille que le `0.0.0.0` de l'installateur corrige le
+      # meme jour, a un fichier d'ecart, et pas remarque alors parce que seul
+      # l'installateur avait ete regarde.
+      #
+      # La cause est un arbitrage volontaire qu'il ne faut pas defaire : les `.syso` sont
+      # COMMITES pour que `go build ./cmd/noisecrypt` reste la commande unique que promet
+      # le README, et `winres/winres.json` y porte `dev` parce que la convention du parc
+      # veut que la version vive dans les tags git et jamais dans un fichier commite. Le
+      # fichier commite a donc raison de dire `dev` ; c'est la release qui doit le
+      # regenerer avec la vraie version, sans le committer.
+      #
+      # Version explicite plutot que la valeur speciale `git-tag` de go-winres, qui rend
+      # une chaine `git describe` du genre `v0.5.0-1-g617dfc8`, avec un `v` et un suffixe
+      # que l'installateur n'a pas : les deux fichiers doivent annoncer le meme nombre.
+      - name: Stamp the Windows resources with the real version
+        if: matrix.goos == 'windows'
+        run: |
+          set -euo pipefail
+          go run github.com/tc-hib/go-winres@latest make \
+            --in winres/winres.json --out cmd/noisecrypt/rsrc --arch amd64,arm64 \
+            --file-version "${{ steps.version.outputs.version }}" \
+            --product-version "${{ steps.version.outputs.version }}"
+
       - name: Build
         env:
           CGO_ENABLED: 0
@@ -110,6 +136,33 @@ jobs:
             echo "::error::binary reports version '$GOT', expected '${{ steps.version.outputs.version }}'"
             exit 1
           fi
+
+      # Le pendant du controle ci-dessus pour les proprietes Windows, qui ne sont PAS
+      # couvertes par lui : `noisecrypt version` lit une variable posee par ldflags, et
+      # elle disait 0.5.0 sur un binaire dont le clic droit annoncait `dev`. Deux chemins
+      # differents pour le meme nombre, donc deux controles.
+      #
+      # Le runner est Ubuntu et ne peut pas interroger une ressource PE, mais il n'en a pas
+      # besoin : RT_VERSION stocke ses chaines en UTF-16LE, il suffit de chercher la
+      # version sous cette forme. Presence de la bonne valeur plutot qu'absence de `dev`,
+      # qui est un mot trop court pour qu'on puisse conclure de sa presence ailleurs.
+      - name: Verify the Windows resource carries the version
+        if: matrix.goos == 'windows'
+        env:
+          V: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os, sys
+          version = os.environ["V"]
+          binaire = os.path.join("dist", os.environ["NAME"])
+          octets = open(binaire, "rb").read()
+          if version.encode("utf-16-le") not in octets:
+              print(f"::error::{binaire} ne porte pas '{version}' dans sa ressource de "
+                    f"version, donc ses proprietes Windows mentent")
+              sys.exit(1)
+          print(f"OK: la ressource de version de {binaire} porte {version}.")
+          PY
 
       - name: Checksum
         run: cd dist && sha256sum "$NAME" > "$NAME.sha256"
