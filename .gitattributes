@@ -9,8 +9,30 @@
 * text=auto eol=lf
 
 # Files that must never be touched.
+#
+# `* text=auto` above asks git to guess, and git guesses correctly on these: it inspects
+# the content and leaves anything it reads as binary alone. Saying so explicitly anyway,
+# because the cost is one line and the failure mode is a Windows checkout quietly
+# rewriting bytes inside a compiled resource, which then produces an executable with a
+# corrupt icon and no error anywhere.
 *.png binary
 *.jpg binary
 *.gif binary
 *.mp4 binary
 *.ncry binary
+*.ico binary
+*.syso binary
+*.exe binary
+
+# Line-ending conventions shared across the wider set of repositories this one belongs to.
+*.sh text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+Dockerfile text eol=lf
+*.bash text eol=lf
+# CRLF on purpose for these two families: a PowerShell script or a batch file with LF
+# endings can misbehave under older Windows shells, and unlike the Unix case the failure
+# is not a clean error message.
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf

@@ -1,0 +1,192 @@
+name: Publish to the Microsoft Store
+
+# PREPARED, NOT ACTIVE. Nothing here has ever run.
+#
+# # How this is switched off, and why it is switched off three times
+#
+# 1. `workflow_dispatch` only, so a tag can never reach it.
+# 2. A preflight step that refuses unless the product id and all four credentials are
+#    present. This is the safeguard that TRAVELS WITH THE REPOSITORY.
+# 3. `gh workflow disable publish-msstore.yml`, GitHub's own mechanism, so it cannot even
+#    be dispatched by hand.
+#
+# The third one is the tidiest and it is deliberately not the only one, because its state
+# lives on GitHub and not in the repository: a clone does not carry it, exactly like
+# `core.hooksPath`. A safeguard that a fresh clone silently loses is not a safeguard, so
+# the preflight exists to be the one that cannot go missing.
+#
+# # What has to happen before this can be enabled
+#
+# - An application must exist in Partner Center, of type **EXE/MSI** (our installer is an
+#   Inno Setup executable, not an MSIX), and its product id set as the repository variable
+#   `MSSTORE_PRODUCT_ID`.
+# - One submission must be completed **by hand** first, so the listing, screenshots, age
+#   rating and privacy declarations exist. This workflow only replaces the package URL of
+#   an existing draft; it cannot create a listing.
+# - Four secrets, from the Entra application used for Store publishing. ⚠️ These are NOT
+#   the code-signing credentials this repository already holds. Both are "Azure", both are
+#   a client id and a secret, and they belong to different application registrations for
+#   different services. Mixing them up produces an authentication error that reads like an
+#   expired secret.
+#     AZURE_AD_TENANT_ID, SELLER_ID,
+#     AZURE_AD_APPLICATION_CLIENT_ID, AZURE_AD_APPLICATION_SECRET
+#
+# Then: `gh workflow enable publish-msstore.yml`.
+#
+# # Why the Store lags, said here so nobody diagnoses a fault that is not one
+#
+# `msstore submission publish` *submits*. Microsoft then puts the version through
+# certification, which takes considerably longer than every other channel: the GitHub
+# Release, winget and the direct installer are all served the moment their job finishes. So
+# at any given moment the Store legitimately offers an older version than winget. Do not
+# read that gap as a problem without checking Partner Center first, and never write
+# "available on the Microsoft Store" next to a version number on release day.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish (e.g. 0.3.0). A GitHub Release must already exist for it.'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  store:
+    name: Submit to Partner Center
+    runs-on: windows-latest
+    timeout-minutes: 40
+
+    steps:
+      # Refuses rather than half-runs. Without this the job would reach `msstore
+      # reconfigure` with empty arguments and fail there, which reads as a credential
+      # problem instead of "this was never set up".
+      - name: Preflight
+        shell: pwsh
+        env:
+          PRODUCT_ID: ${{ vars.MSSTORE_PRODUCT_ID }}
+          TENANT: ${{ secrets.AZURE_AD_TENANT_ID }}
+          SELLER: ${{ secrets.SELLER_ID }}
+          CLIENT: ${{ secrets.AZURE_AD_APPLICATION_CLIENT_ID }}
+          SECRET: ${{ secrets.AZURE_AD_APPLICATION_SECRET }}
+        run: |
+          $missing = @()
+          foreach ($n in @("PRODUCT_ID", "TENANT", "SELLER", "CLIENT", "SECRET")) {
+            # Emptiness is not the only failure. A secret set with
+            # `gh secret set NAME --body -` holds the literal string "-", which is not
+            # empty and passed every check the last time: that is how a whole release was
+            # attempted with four hyphens for credentials.
+            $v = [Environment]::GetEnvironmentVariable($n)
+            if ([string]::IsNullOrWhiteSpace($v) -or $v -eq "-") { $missing += $n }
+          }
+          if ($missing.Count -gt 0) {
+            Write-Host "::error title=Not configured::Microsoft Store publishing is prepared but not set up. Missing or placeholder: $($missing -join ', '). See the header of .github/workflows/publish-msstore.yml for what has to exist first."
+            exit 1
+          }
+          Write-Host "Configuration present."
+
+      - name: Confirm the release carries an installer
+        id: release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          $tag = "v$($env:VERSION)"
+          $assets = gh release view $tag --repo ${{ github.repository }} --json assets -q '.assets[].name'
+          # x64 only. The Store's EXE/MSI listing type carries one installer, and an ARM64
+          # machine runs the x64 build under emulation, so shipping the x64 one is a
+          # working answer rather than a compromise.
+          $x64 = $assets | Where-Object { $_ -like '*-amd64-setup.exe' } | Select-Object -First 1
+          if (-not $x64) { throw "No amd64 installer in release $tag" }
+          "url=https://github.com/${{ github.repository }}/releases/download/$tag/$x64" >> $env:GITHUB_OUTPUT
+
+      - name: Configure the Microsoft Store CLI
+        uses: microsoft/microsoft-store-apppublisher@v1.1
+
+      # ⚠️ The whole reason this step is written defensively rather than as three commands.
+      #
+      # `msstore` exits 0 even when a publication is REFUSED. It reports success at the
+      # envelope level (`IsSuccess: true`) and puts the actual failure in an `Errors` array
+      # inside the JSON. A naive step therefore goes green having published nothing, and on
+      # the sibling project in this ecosystem it did exactly that for months before anyone
+      # noticed: a build was rejected for "Product already has One Active Submission
+      # In-Progress" and the CI reported a successful release.
+      #
+      # So: the JSON is parsed and its Errors array is inspected after every call, and
+      # `submission status` is asked FIRST, because a submission already in flight fails
+      # both update and publish with two obscure errors instead of one clear one.
+      #
+      # Also worth keeping straight: `submission get` returns the DRAFT, not what is live.
+      # Only `status`, and `poll` at the end, describe the real state.
+      - name: Publish
+        timeout-minutes: 30
+        shell: pwsh
+        env:
+          VERSION: ${{ inputs.version }}
+          PACKAGE_URL: ${{ steps.release.outputs.url }}
+          PRODUCT_ID: ${{ vars.MSSTORE_PRODUCT_ID }}
+        run: |
+          $script:failed = $false
+
+          function Read-Json {
+            param([string]$Text)
+            $i = $Text.IndexOf('{')
+            if ($i -lt 0) { return $null }
+            try { return $Text.Substring($i) | ConvertFrom-Json } catch { return $null }
+          }
+
+          function Check-Response {
+            param([string]$Stage, [string]$Output)
+            $j = Read-Json $Output
+            if ($null -eq $j) {
+              Write-Host "::warning::$Stage : msstore returned nothing usable"
+              return $null
+            }
+            if ($j.PSObject.Properties.Name -contains 'Errors' -and $j.Errors -and $j.Errors.Count -gt 0) {
+              foreach ($e in $j.Errors) { Write-Host "::error::$Stage : $($e.Message)" }
+              $script:failed = $true
+            }
+            return $j
+          }
+
+          msstore reconfigure `
+            --tenantId ${{ secrets.AZURE_AD_TENANT_ID }} `
+            --sellerId ${{ secrets.SELLER_ID }} `
+            --clientId ${{ secrets.AZURE_AD_APPLICATION_CLIENT_ID }} `
+            --clientSecret ${{ secrets.AZURE_AD_APPLICATION_SECRET }}
+
+          $status = Check-Response "status" (msstore submission status $env:PRODUCT_ID | Out-String)
+          if ($status -and $status.ResponseData.OngoingSubmissionId) {
+            Write-Host "::error::A submission is already in flight at Microsoft (id $($status.ResponseData.OngoingSubmissionId)). Publication of $env:VERSION skipped; run this again once it has finished."
+            exit 1
+          }
+
+          # The existing draft is fetched and only its package URL changed, rather than a
+          # fresh object being built: Microsoft expects to get back every field it sent
+          # (ErrorDetails, GenericDocUrl and others), and reconstructing the JSON silently
+          # drops the ones nobody thought to include.
+          $draft = Read-Json (msstore submission get $env:PRODUCT_ID | Out-String)
+          if ($null -eq $draft) {
+            Write-Host "::error::Could not read the submission draft"
+            exit 1
+          }
+          $draft.Packages[0].PackageUrl = $env:PACKAGE_URL
+          $updated = $draft | ConvertTo-Json -Depth 10 -Compress
+
+          Check-Response "update"  (msstore submission update $env:PRODUCT_ID $updated | Out-String) | Out-Null
+          Check-Response "publish" (msstore submission publish $env:PRODUCT_ID | Out-String) | Out-Null
+          if ($script:failed) {
+            Write-Host "::error::Microsoft Store publication failed for $env:VERSION. Fall back to Partner Center by hand."
+            exit 1
+          }
+
+          # Without this poll the run never learns whether Microsoft accepted or rejected
+          # the submission, which is the whole point of automating it.
+          Write-Host "Submitted. Waiting for Microsoft's verdict..."
+          Check-Response "poll" (msstore submission poll $env:PRODUCT_ID | Out-String) | Out-Null
+          if ($script:failed) { exit 1 }
+          Write-Host "Microsoft Store: $env:VERSION went through without errors."
+          Write-Host "Note that certification still has to run. The Store will keep serving the previous version until it completes." >> $env:GITHUB_STEP_SUMMARY

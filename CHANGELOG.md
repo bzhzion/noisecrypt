@@ -10,6 +10,62 @@ patched by CI at tag time and are never committed with a real version number.
 
 ## [Unreleased]
 
+### Added
+
+- **Submitted to winget.** `Breizhzion.NoiseCrypt`, pull request
+  [microsoft/winget-pkgs#430831](https://github.com/microsoft/winget-pkgs/pull/430831),
+  **open and awaiting review**. `winget install Breizhzion.NoiseCrypt` does not work until
+  it is merged, so it is not being advertised yet.
+  - The manifests were written by hand rather than through `wingetcreate new`'s interview,
+    which forced two values to be looked up instead of assumed: the hashes, recalculated
+    locally and compared against the published `SHA256SUMS`, and the **`ProductCode`, read
+    out of the registry after a real installation** (Inno Setup suffixes `_is1` to the
+    `AppId`). That value is how winget recognises an already-installed copy, so guessing it
+    wrong breaks **upgrading** while leaving installation working, which means it breaks
+    silently and only at the next version.
+  - The `Documentation` field had to go: schema 1.6.0 does not know it, and the local
+    validator said so. Submitting a manifest an upstream validator might reject is worse
+    than losing a field.
+  - Not verified locally: `winget install --manifest` requires enabling `LocalManifestFiles`
+    as administrator, and the winget-pkgs pipeline performs exactly that installation test
+    on the pull request, in its own sandbox, before merging.
+
+- **A Microsoft Store workflow, prepared and switched off.** Nothing in it has ever run.
+  Publishing needs an application to exist in Partner Center, of type **EXE/MSI** since
+  this installer is an Inno Setup executable and not an MSIX, plus one submission completed
+  by hand so the listing, screenshots, age rating and privacy declarations exist: the
+  workflow only replaces the package URL of an existing draft, it cannot create a listing.
+  - Switched off three times, which is not decoration. Manual trigger only, so a tag cannot
+    reach it. A preflight step that refuses until the product id and all four credentials
+    are present, and **that is the one that travels with the repository**. And
+    `gh workflow disable`, GitHub's own mechanism, so it cannot even be dispatched by hand.
+    The third is the tidiest and deliberately not the only one: its state lives on GitHub
+    rather than in the repository, so a clone does not carry it, exactly like
+    `core.hooksPath`. A safeguard a clone loses in silence is not a safeguard.
+  - The preflight tests for the literal value `-` as well as for emptiness, because a
+    secret set with `gh secret set NAME --body -` holds a hyphen, which is not empty and
+    passed every check the last time.
+  - ⚠️ Transcribed from the sibling project in this ecosystem along with its hardest-won
+    lesson: **`msstore` exits 0 even when a publication is refused.** It reports success at
+    the envelope level and puts the real failure in an `Errors` array inside the JSON, so a
+    naive step goes green having published nothing, which is what happened there for months
+    before anyone noticed. Every call's JSON is parsed and its `Errors` array inspected, and
+    `submission status` is asked first because a submission already in flight fails both
+    update and publish with two obscure errors instead of one clear one. `submission get`
+    returns the **draft**, not what is live; only `status` and `poll` describe the real
+    state. The draft is fetched and only its package URL changed rather than rebuilt,
+    because Microsoft expects back every field it sent.
+  - Written down so nobody diagnoses a fault that is not one: `submission publish`
+    *submits*, and Microsoft then runs certification, which is far slower than every other
+    channel. At any moment the Store legitimately serves an older version than winget.
+
+### Fixed
+
+- `.gitattributes` now names `.ico`, `.syso` and `.exe` as binary. `* text=auto` already
+  guesses correctly on them, but the cost of saying it is one line and the failure it
+  prevents is a checkout quietly rewriting bytes inside a compiled resource, producing an
+  executable with a corrupt icon and no error anywhere.
+
 ## [0.3.0] - 2026-09-07
 
 ### Added
