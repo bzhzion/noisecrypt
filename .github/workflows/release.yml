@@ -399,16 +399,18 @@ jobs:
           except Exception:
               existant = {}
           f = existant.get("files", {})
-          for arch in ("amd64", "arm64"):
-              f[f"windows_{arch}"] = {
+          # Les cles suivent le vocabulaire commun au parc, x64 et arm64 avec des
+          # soulignes, et non les noms de cible de Go (amd64, darwin-). Les noms de
+          # FICHIERS gardent en revanche la forme de Go : ce sont deux choses differentes,
+          # une cle de manifeste que des sites lisent et un nom d'artefact de build.
+          for arch, cle in (("amd64", "windows_x64"), ("arm64", "windows_arm64")):
+              f[cle] = {
                   "url": f"{base}/NoiseCrypt-Setup-{arch}.exe",
                   "versioned_url": f"{base}/NoiseCrypt-Setup-{arch}-{v}.exe",
                   "version": v,
               }
-          for cible in ("darwin-amd64", "darwin-arm64"):
-              f[cible.replace("darwin", "macos")] = {
-                  "url": f"{base}/noisecrypt-{cible}", "version": v,
-              }
+          for cible, cle in (("darwin-amd64", "macos_x64"), ("darwin-arm64", "macos_arm64")):
+              f[cle] = {"url": f"{base}/noisecrypt-{cible}", "version": v}
           # Linux : le depot apt fait autorite, donc le manifeste renvoie vers lui plutot
           # que vers une copie R2 qui serait une seconde source de verite.
           f["linux_apt"] = {"url": "https://apt.breizhzion.com", "version": v}

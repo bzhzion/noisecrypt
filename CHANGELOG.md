@@ -10,6 +10,13 @@ patched by CI at tag time and are never committed with a real version number.
 
 ## [Unreleased]
 
+### Changed
+
+- Manifest keys now follow the estate's shared vocabulary (`windows_x64`, `macos_arm64`)
+  rather than Go's build target names (`windows_amd64`, `macos-amd64`). The **filenames**
+  keep Go's form: a manifest key that websites read and a build artefact name are two
+  different things, and the first release published them mixed.
+
 ## [0.3.1] - 2026-09-07
 
 ### Added
