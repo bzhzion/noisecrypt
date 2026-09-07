@@ -78,11 +78,6 @@ A window opens in your browser.
 
 ![The NoiseCrypt interface on opening: a dark page with four tabs, To a file, From a file, To and from video, and Identities. The first tab is showing, with a file picker and a passphrase field.](docs/images/interface.png)
 
-*Two notes on that screenshot. The flickering pattern behind everything is the same grid of
-squares the program draws when it turns a file into video, so the interface shows you the
-shape your file takes. And the "Choose file" buttons appear here in French because the
-browser draws those itself, in whatever language it is set to: you will see them in yours.*
-
 A black terminal window opens alongside it. **Leave it open.** That window is the program;
 it is what serves the page. Closing it stops everything.
 
@@ -259,37 +254,62 @@ effective as forging one, which empties the idea of its meaning.
 
 ## What makes this one different
 
-Four things, and they are the reason this exists rather than something else.
+Turning files into video is not a new idea. Several tools do it, some of them good. Here is
+what this one does that they do not, and what it simply does properly.
 
-### It is built for encryption that has to last
+### The encryption is not something you can forget to switch on
 
-Most encryption in use today has a known expiry date. A large enough quantum computer breaks
-the mathematics behind the majority of encrypted traffic on the internet, and "harvest now,
-decrypt later" is a real strategy: record the ciphertext, wait for the machine.
+Every other tool in this space treats encryption as an option, or leaves it to you. The
+project this one replaced said "encrypt it beforehand" in its documentation, which is a
+booby trap with a long fuse: nobody does, and the one time it matters the video has been
+public for a month.
 
-NoiseCrypt uses **two different locks at once**, and both have to be broken. A classical one,
-proven over decades, and a post-quantum one designed to resist that future machine. Betting
-only on the post-quantum lock means betting on young mathematics. Betting only on the
-classical one means betting the machine never arrives. Here you bet on neither.
+**NoiseCrypt has no mode that skips it.** There is no `--encrypt` flag to remember and no
+plaintext path to fall into, because there is no plaintext path at all. The file name, the
+size and the modification date go inside the encryption too, so the video reveals that
+*something* is there and never *what*.
 
-The same is true of signatures: classical and post-quantum, both produced, both required.
-There is no mode that accepts one of the two.
+That is the difference between a tool that can be used safely and a tool that is safe.
 
-### Every number here was measured, and it says what against
+### It is the only one that claims to survive a platform, and shows the numbers
 
-The channel table has a column called **Measured**, and it does not say how confident anyone
-feels. It says what was actually done.
+This is the hard part of the problem, and it is where the others stop.
+
+Read their documentation and most of them say it openly: they need a platform which does
+**not** re-encode. Lossless codecs, lossless containers, "upload this to any lossless video
+platform". On YouTube, which re-encodes everything into ten different versions, that approach
+does not work at all. The most capable of them can send H.264 to a platform, and makes no
+claim about what comes back.
+
+That is the honest state of the art, and it is worth saying without sneering: surviving a
+platform is genuinely difficult, and choosing not to promise it is a defensible decision.
+
+NoiseCrypt is built for the opposite case, and the channel table has a column called
+**Measured** that does not say how confident anyone feels. It says what was actually done.
 
 `platform, YouTube, 10 renditions` means a container really went up to YouTube, really came
-back through every version YouTube produced, and really decoded byte for byte.
+back through every version YouTube produced, and really decoded byte for byte. Down to 144
+pixels wide, at a twentieth of the original bitrate.
 
 `local, H.264 to CRF 23` for `archive` is not a weaker result, it is the ceiling of what that
 channel's premise allows: it targets media nobody re-encodes, so there is no platform for it
 to cross.
 
-Nothing in this project claims a figure it has not produced. When a measurement said a denser
-profile was possible and a second measurement showed the first one was misleading, the second
-one won and [the reasoning is written down](CHANGELOG.md).
+### Everything here was measured, and the wrong measurements are written down too
+
+Nothing here claims a figure it has not produced, and no figure is written next to the code
+it describes, because a number kept in step by hand eventually stops being true. The
+overhead percentages in that table are derived from the actual error-correcting layout at
+runtime; one of them was declared as 40% and turned out to be 114%, which is why they are
+now calculated rather than typed.
+
+The more useful habit is the opposite one. When a measurement said a denser channel was
+possible and a second measurement showed the first was misleading, the second won **and both
+are in the [changelog](CHANGELOG.md)**, along with the reason the first one lied. Three
+wrong diagnoses of the same bug are in there. So is a control that reported success without
+having checked anything, and how that was caught.
+
+You are not being sold a clean story. You are being handed the workings.
 
 ### Nothing leaves your machine, including this page
 
@@ -310,6 +330,22 @@ exactly what hides a channel getting worse.
 
 There is no fake progress bar. There is no reassuring green tick on an operation that was
 not verified. Where something has not been tested, the tool says so.
+
+### And the cryptography is current, which is table stakes rather than a boast
+
+Key exchange is hybrid X25519 and ML-KEM-768, so breaking it means breaking both. That is
+the right way to do it in 2026, and it is **not a differentiator**: the good file encryption
+tools got there too. [age](https://github.com/FiloSottile/age) ships post-quantum recipients,
+[Kryptor](https://www.kryptor.co.uk/) has hybrid ML-KEM key exchange. If that is all you
+need, use one of those; they are excellent and they are open source.
+
+Where NoiseCrypt goes a step further is signatures, which are hybrid too, Ed25519 and
+ML-DSA-65, both produced and both required. `age` has no signatures at all by design, and
+Kryptor's are classical Ed25519. Worth knowing, not worth a headline.
+
+The point of saying this plainly: a project that oversells its cryptography invites you to
+distrust everything else it tells you, and the parts above are the ones that are actually
+unusual.
 
 ---
 
@@ -394,11 +430,14 @@ guarantee is selling something.
 
 ## The encryption
 
-If you only remember one line: **NoiseCrypt is built for the person who assumes their
-encrypted data will be recorded today and attacked in twenty years.**
+The reference list, for anyone who wants to check rather than take a word for it. None of it
+is exotic and that is the intention: a video codec is an unusual thing to build, a
+cryptographic primitive is not, and this project wrote none of the latter.
 
 **Key exchange** is hybrid X25519 and ML-KEM-768 (FIPS 203). Both shared secrets go into one
-transcript, so the result is safe as long as *either* holds.
+transcript, so the result is safe as long as *either* holds. This is the standard approach
+to post-quantum migration and several good tools do it; see
+[the note above](#and-the-cryptography-is-current-which-is-table-stakes-rather-than-a-boast).
 
 **Signatures**, when you use them, are hybrid Ed25519 and ML-DSA-65 (FIPS 204). Both produced,
 both required to verify.
