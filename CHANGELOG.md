@@ -10,6 +10,8 @@ patched by CI at tag time and are never committed with a real version number.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-07
+
 ### Added
 
 - **A winget publishing workflow**, `Breizhzion.NoiseCrypt`, on **manual trigger only**.
