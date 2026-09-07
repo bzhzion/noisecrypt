@@ -11,6 +11,19 @@ patched by CI at tag time and are never committed with a real version number.
 ## [Unreleased]
 
 ### Added
+- **`concurrency` on the release workflow**, with `cancel-in-progress: false`.
+  - **Preventive, and the comment says so**: today each run publishes to the tag of its own
+    version, so an older one finishing last overwrites nothing. The guard is in place
+    before the thing it protects, namely the ongoing alignment that will add a manifest and
+    a generic-name file shared across versions.
+  - A first draft of that comment described the failure as already possible here. It was
+    not, and it was corrected before committing: a comment describing a failure that does
+    not exist eventually reads as a statement of fact.
+  - The defect has happened elsewhere: on a sibling project an older build started 34
+    minutes earlier, finished 14 minutes later, and overwrote the newer release.
+
+
+### Added
 
 - **Submitted to winget.** `Breizhzion.NoiseCrypt`, pull request
   [microsoft/winget-pkgs#430831](https://github.com/microsoft/winget-pkgs/pull/430831),

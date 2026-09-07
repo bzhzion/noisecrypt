@@ -17,6 +17,24 @@ on:
     tags: ['v*']
   workflow_dispatch:
 
+# Serialises runs of this workflow instead of letting them overlap.
+#
+# PREVENTIVE here, and worth saying plainly: today each run publishes to the tag of ITS OWN
+# version, so an older one finishing last overwrites nothing. The guard is in place before the
+# thing it protects, namely the ongoing alignment that will add a manifest and a
+# generic-name file shared across versions.
+#
+# That is when the defect becomes real, and it has already happened elsewhere: on a sibling
+# project an older build started 34 minutes earlier, finished 14 minutes later, and
+# republished the previous version over the new one. A read-modify-write with no guard lets
+# the last writer win regardless of version.
+#
+# `cancel-in-progress: false` is the part that matters: cancelling would abort a release
+# mid-publication. Queueing preserves tag order.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 permissions:
   contents: read
 
