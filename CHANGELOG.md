@@ -10,6 +10,47 @@ patched by CI at tag time and are never committed with a real version number.
 
 ## [Unreleased]
 
+### Added
+
+- **Right-click to encrypt, double-click to decrypt**, on Windows, plus a right-click on
+  the background of a folder for **New NoiseCrypt identity**. Registered by
+  `noisecrypt shell register`, removed by `shell unregister`, reported by `shell status`.
+  - **The binary owns the registry entries, not an installer.** Every installer script in
+    the world writes these keys itself, and would then hold a second copy of knowledge
+    that lives in the program: the two drift the first time an entry changes. So the
+    installer calls the command, and there is one description of what integration means.
+    Someone who downloaded the bare binary gets the same feature with one command.
+  - Everything lives under `HKCU\Software\Classes`, so **no administrator and no
+    elevation**. Verified before relying on it: `.ncry` is unclaimed in all three places
+    that would matter, so the classic registration is honoured. Since Windows 8 an
+    extension already owned by an application is protected by a hash under
+    `FileExts\<ext>\UserChoice` and a plain ProgID write is ignored, which is what stops
+    programs stealing `.pdf` from each other. On this machine VLC owns `.mp4` that way.
+  - `shell status` checks that the recorded program still exists, because that failure is
+    silent everywhere else: the registry holds an absolute path, so moving the binary
+    leaves menu entries that do nothing at all. The register command says so rather than
+    letting it be discovered.
+  - **A `-pause` flag, and no heuristic.** An Explorer-launched console closes the instant
+    the program returns, so the result would be a flash of black. Two heuristics were
+    tried and both were wrong: owning the console does tell an Explorer launch from a
+    typed command, but `Start-Process -WindowStyle Hidden` also gives a program its own
+    console, and adding "standard input is a terminal" does not help because a hidden
+    console still reports one. Measured, and the result was a process waiting forever for
+    a key nobody could press. **A pause that can hang a scheduled task is worse than a
+    window that closes too fast**, so the registry entries simply ask for it.
+  - Registry mechanics are tested against a scratch root rather than the real one. A test
+    that rewrites the developer's actual file associations is a test somebody disables,
+    and then the mechanics go untested.
+  - One trap worth keeping: `*` is a literal key name in `Software\Classes\*\shell`, and a
+    check written with a wildcard-aware helper reports that key missing when it is
+    present. That is exactly how the first manual verification of this feature went.
+
+### Fixed
+
+- `pauseBeforeClosing` dereferenced `Stdin` without checking it, so an `Env` built without
+  one panicked. The real binary always sets it, which is precisely why nothing but a test
+  would have found it.
+
 ## [0.2.0] - 2026-09-06
 
 Everything in this release exists because someone who had never used the tool sat down and

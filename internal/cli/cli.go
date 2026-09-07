@@ -74,6 +74,7 @@ var commands = []command{
 	{"estimate", "report the video cost of encoding a file, before encoding it", runEstimate},
 	{"simulate", "measure which re-encoding qualities a profile survives", runSimulate},
 	{"gui", "open the graphical interface in your browser", runGUI},
+	{"shell", "add or remove the right-click and double-click integration (Windows)", runShell},
 	{"profiles", "list the available channel profiles", runProfiles},
 	{"version", "print the version", runVersion},
 }
@@ -94,6 +95,22 @@ func Run(env *Env, args []string) int {
 		return 2
 	}
 
+	// A leading -pause is stripped before dispatch, so every command can be asked to
+	// hold its window open without each one growing a flag for it. Handled here rather
+	// than in the flag sets because it is not about any one command: it is about how the
+	// process was launched, and only the shell registration knows that.
+	pause := false
+	if args[0] == "-pause" {
+		pause, args = true, args[1:]
+		if len(args) == 0 {
+			usage(env.Stderr)
+			return 2
+		}
+	}
+	if pause {
+		defer pauseBeforeClosing(env)
+	}
+
 	// Every spelling anyone actually types, rather than the three that happened to get
 	// written. `-help` in particular is what Go's own flag package prints in its usage
 	// line, so it is the form a Go user is most likely to try, and it exited 2 on
@@ -112,7 +129,8 @@ func Run(env *Env, args []string) int {
 		if c.name != name {
 			continue
 		}
-		if err := c.run(env, args[1:]); err != nil {
+		err := c.run(env, args[1:])
+		if err != nil {
 			if errors.Is(err, flag.ErrHelp) {
 				return 2
 			}
@@ -125,6 +143,30 @@ func Run(env *Env, args []string) int {
 	fmt.Fprintf(env.Stderr, "noisecrypt: unknown command %q\n\n", name)
 	usage(env.Stderr)
 	return 2
+}
+
+// pauseBeforeClosing keeps a console open long enough for its contents to be read.
+//
+// Asked for by an explicit leading `-pause`, and never guessed. Two heuristics were tried
+// and both were wrong. Owning the console does distinguish an Explorer launch from a
+// typed command, but `Start-Process -WindowStyle Hidden` also gives a program its own
+// console, and adding "standard input is a terminal" does not help either: a hidden
+// console still reports one. Measured rather than assumed, and the result was a process
+// that waited forever for a key nobody could press. A pause that can hang a scheduled
+// task is worse than a window that closes too fast.
+//
+// The registry entries are the only caller, and they are written by this program, so the
+// one place that needs the pause is the one place that can simply ask for it.
+func pauseBeforeClosing(env *Env) {
+	// No standard input means nobody to wait for. Found by a test that built an Env
+	// without one and got a nil dereference: the real binary always sets it, which is
+	// exactly why nothing else would have caught this.
+	if env.Stdin == nil {
+		return
+	}
+	fmt.Fprint(env.Stdout, "\nPress Enter to close this window. ")
+	var scratch [1]byte
+	_, _ = env.Stdin.Read(scratch[:])
 }
 
 // runOrFail reports a command's error the same way the dispatch table does.

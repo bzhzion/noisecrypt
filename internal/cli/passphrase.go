@@ -185,3 +185,11 @@ func readPassphraseFromTerminal(prompt string) ([]byte, error) {
 	}
 	return b, nil
 }
+
+// stdinIsTerminal reports whether standard input is a real terminal.
+//
+// Shared by the passphrase reader, which cannot prompt without one, and by the pause that
+// keeps an Explorer-launched console open, which would hang without one.
+func stdinIsTerminal() bool {
+	return term.IsTerminal(int(os.Stdin.Fd()))
+}
