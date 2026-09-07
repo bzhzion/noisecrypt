@@ -283,6 +283,10 @@ jobs:
     if: github.ref_type == 'tag'
     permissions:
       contents: write
+    # Exposed for the calling job below: a value computed in one job is invisible to
+    # another unless it is a declared output.
+    outputs:
+      version: ${{ steps.version.outputs.version }}
 
     steps:
       - name: Download every artefact
@@ -428,3 +432,14 @@ jobs:
         run: |
           set -euo pipefail
           aws s3 cp latest.json "s3://breizhzion-releases/noisecrypt/latest.json"             --endpoint-url "$R2" --content-type application/json
+
+  # APT publishing, called explicitly rather than triggered by `workflow_run`, which does
+  # not fire (see the header of publish-apt.yml). `needs: publish` is the guard the old
+  # `if` used to be: a failed publish never reaches this job. `secrets: inherit` is
+  # mandatory, a called workflow receives no secrets at all without it.
+  apt:
+    needs: publish
+    uses: ./.github/workflows/publish-apt.yml
+    with:
+      version: ${{ needs.publish.outputs.version }}
+    secrets: inherit

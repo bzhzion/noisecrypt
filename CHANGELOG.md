@@ -10,6 +10,19 @@ patched by CI at tag time and are never committed with a real version number.
 
 ## [Unreleased]
 
+### Fixed
+
+- **APT publishing is called by the release workflow** (`workflow_call`) rather than
+  triggered by an event. The file stays separate, with its own permissions and its own
+  dedicated SSH key.
+  - ⚠️ **`workflow_run` does not fire.** Proven on the sibling project hublot: three
+    attempts, **zero triggered runs**, from a tag and from a branch alike, with names
+    matching exactly and the file present on the default branch. Cause not established.
+  - `workflow_call` depends on no event to observe: the caller names the callee, so either
+    the job is in the run or it is not. Verifiable at a glance.
+  - `needs: publish` replaces the old `if`, and ⚠️ `secrets: inherit` is **mandatory**: a
+    called workflow receives no secrets at all without it.
+
 ### Added
 
 - **The interface manages this machine's identity**, which is what it could not do before.

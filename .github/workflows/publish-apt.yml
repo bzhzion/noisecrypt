@@ -26,9 +26,17 @@ name: Publish to the APT repository
 
 on:
   # Chained after the build that produces the .deb packages.
-  workflow_run:
-    workflows: ["Release"]
-    types: [completed]
+  # ⚠️ `workflow_run` was tried and DOES NOT FIRE: proven on the sibling project hublot,
+  # three attempts and zero triggered runs, from a tag and from a branch alike, with names
+  # matching exactly and the file present on the default branch. Cause not established.
+  # `workflow_call` depends on no event to observe: the caller names the callee, so either
+  # the job is in the run or it is not.
+  workflow_call:
+    inputs:
+      version:
+        description: 'Version to publish'
+        required: true
+        type: string
   # Kept so a specific version can be replayed by hand.
   workflow_dispatch:
     inputs:
@@ -45,23 +53,15 @@ jobs:
     name: Publish the .deb packages on apt.breizhzion.com
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # A failed build must publish nothing, and a branch build has no release to attach to.
-    # Both conditions are needed: `conclusion` alone would let a branch push through,
-    # `head_branch` alone would let a failure through.
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.conclusion == 'success' &&
-       startsWith(github.event.workflow_run.head_branch, 'v'))
 
     steps:
       - name: Resolve the version
         id: v
         env:
           INPUT: ${{ inputs.version }}
-          BRANCH: ${{ github.event.workflow_run.head_branch }}
         run: |
           set -euo pipefail
-          if [ -n "${INPUT:-}" ]; then V="$INPUT"; else V="${BRANCH#v}"; fi
+          V="${INPUT:-}"
           if [ -z "$V" ]; then echo "::error::could not determine the version"; exit 1; fi
           echo "Version: $V"
           echo "version=$V" >> "$GITHUB_OUTPUT"
