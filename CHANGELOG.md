@@ -10,6 +10,8 @@ patched by CI at tag time and are never committed with a real version number.
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-09-07
+
 ### Added
 
 - **Debian packages, and publishing to the shared APT repository.** `release.yml` now
