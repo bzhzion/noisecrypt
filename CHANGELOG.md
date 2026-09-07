@@ -10,20 +10,34 @@ patched by CI at tag time and are never committed with a real version number.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-07
+
+**Code identique à 0.3.2.** Publiée uniquement pour que le numéro dise ce que la version
+contient : une nouvelle commande, un nouveau fichier écrit à côté du précédent et une
+nouvelle route d'API sont une addition de fonctionnalité, donc un incrément mineur, et
+0.3.2 les a livrées sous un numéro de correctif.
+
+La cause est notée parce qu'elle se reproduira : le tag avait été posé pour **éprouver un
+bout de CI**, et le niveau du numéro a été choisi d'après ce motif immédiat plutôt que
+d'après ce que le tag emportait réellement. Ne pas taguer pour tester une chaîne de
+publication sans regarder son contenu.
+
+Voir la section 0.3.2 pour le détail de ce qui est livré.
+
 ## [0.3.2] - 2026-09-07
 
-### Fixed
+⚠️ **Numérotée à tort en correctif.** This release shipped the whole identity feature
+below, which is a minor bump by any reading of semantic versioning, and it got a patch
+number because the tag was pushed to exercise the APT chaining without anyone looking at
+what the tag was carrying. **The same content is re-released as 0.4.0 so the number tells
+the truth.** Nothing is rewritten here: 0.3.2 is published, downloadable and referenced in
+a winget pull request, and rewriting a served release's history would be worse than the
+defect it fixes.
 
-- **APT publishing is called by the release workflow** (`workflow_call`) rather than
-  triggered by an event. The file stays separate, with its own permissions and its own
-  dedicated SSH key.
-  - ⚠️ **`workflow_run` does not fire.** Proven on the sibling project hublot: three
-    attempts, **zero triggered runs**, from a tag and from a branch alike, with names
-    matching exactly and the file present on the default branch. Cause not established.
-  - `workflow_call` depends on no event to observe: the caller names the callee, so either
-    the job is in the run or it is not. Verifiable at a glance.
-  - `needs: publish` replaces the old `if`, and ⚠️ `secrets: inherit` is **mandatory**: a
-    called workflow receives no secrets at all without it.
+Its sections were also merged below. Each commit had inserted its own `### Fixed` or
+`### Changed` at the top of `[Unreleased]` without folding into the previous one, so this
+version's notes carried four `Fixed` and three `Changed` headings and opened on a CI fix
+while burying the feature in the middle.
 
 ### Added
 
@@ -53,7 +67,76 @@ patched by CI at tag time and are never committed with a real version number.
     loopback-only server. An interface that cannot do what one comes to it for sends the
     user elsewhere.
 
+- **`noisecrypt identity`**, which shows what is already on this machine: the public
+  identity, its fingerprint, and whether the private key is passphrase-protected.
+  - This closes the worst defect found so far. The public identity was printed exactly
+    once, by `keygen`, into a console that closes on its own, and **no command could ever
+    show it again**. The private key was safe and decryption kept working; the user simply
+    had no way to tell anyone how to encrypt to them, short of regenerating and losing
+    access to everything already sealed to the old identity. The only half meant to be
+    shared was write-once.
+  - It repairs rather than only reports: when the public file is absent, it is written from
+    the private key.
+
+- **`keygen` now writes the public half beside the private one**, `identity.ncrykey` and
+  `identity.ncrypub`, the way SSH writes `id_ed25519.pub`.
+  - Distinct final extensions rather than `.priv` and `.pub` before a shared one: Windows
+    reads only the last segment, so both would be the same file type with one icon and one
+    association. **A secret and a thing meant to be published should not look alike.**
+  - The extensionless name written by earlier versions is still honoured when it is the one
+    present. A rename would have been tidier and would also have been us moving somebody's
+    only copy of a private key to satisfy a naming preference.
+  - Consequence worth knowing: the public file is **not encrypted**, so the interface can
+    state which identity this machine uses, and show its fingerprint, without asking for a
+    passphrase first.
+  - **No fingerprint file, deliberately.** A fingerprint verifies a public identity by
+    being compared over a different channel. Written into the same directory as the key it
+    describes it verifies nothing, since whoever can replace one can replace the other in
+    the same gesture. It would look like a protection while being none.
+
+### Changed
+
+- `internal/keystore` extracted from `internal/cli`: the interface needs to know where
+  identities live, and `cli` already imports `webui`, so reading it from there was an
+  import cycle.
+  - Two tests failed on the rename and **that was correct behaviour**, they caught it. They
+    asserted the literal filename; they now ask `DefaultIdentityPath()` for it, so they
+    break when the contract changes rather than when a name does.
+
+- **`publish-apt.yml` is now chained after the build** (`workflow_run`) while remaining a
+  **separate** workflow: its own file, its own permissions, and above all a dedicated SSH key
+  unrelated to the build's other secrets.
+  - ⚠️ It was "manual only", and the consequence on the sibling projects was that **the apt
+    repository drifted in silence**: a package stayed at 0.1.0 while its releases went to
+    1.0.1 then 1.0.2. Same pattern as winget — **the single manual step in an otherwise
+    automated chain is the one that never happens.**
+  - The manual trigger protected against little anyway: pushing a tag and dispatching a
+    workflow need the **same** write permission, so it prevented accidental runs and not
+    malicious ones. The real protection remains the server-side restricted key, unchanged.
+  - Two guards, both necessary: `conclusion == 'success'` so a failed build publishes
+    nothing, and `startsWith(head_branch, 'v')` so a branch push triggers nothing. Either
+    one alone lets a case through.
+  - ⚠️ `workflow_run` trap: it only fires if the file is on the default branch, and its
+    context is that branch **and not the tag**, so the version comes from the event's
+    `head_branch` rather than `github.ref`.
+
+- Manifest keys now follow the estate's shared vocabulary (`windows_x64`, `macos_arm64`)
+  rather than Go's build target names (`windows_amd64`, `macos-amd64`). The **filenames**
+  keep Go's form: a manifest key that websites read and a build artefact name are two
+  different things, and the first release published them mixed.
+
 ### Fixed
+
+- **APT publishing is called by the release workflow** (`workflow_call`) rather than
+  triggered by an event. The file stays separate, with its own permissions and its own
+  dedicated SSH key.
+  - ⚠️ **`workflow_run` does not fire.** Proven on the sibling project hublot: three
+    attempts, **zero triggered runs**, from a tag and from a branch alike, with names
+    matching exactly and the file present on the default branch. Cause not established.
+  - `workflow_call` depends on no event to observe: the caller names the callee, so either
+    the job is in the run or it is not. Verifiable at a glance.
+  - `needs: publish` replaces the old `if`, and ⚠️ `secrets: inherit` is **mandatory**: a
+    called workflow receives no secrets at all without it.
 
 - The right-click entry on a folder **now creates the identity in that folder**. It was
   called "New NoiseCrypt identity" and ran `keygen` with no argument, so it wrote to the
@@ -83,37 +166,6 @@ patched by CI at tag time and are never committed with a real version number.
 - A path in a message was printed with `%q`, which escapes backslashes and produced a
   Windows path as `C:\Users\...` that nobody could copy.
 
-### Added
-
-- **`noisecrypt identity`**, which shows what is already on this machine: the public
-  identity, its fingerprint, and whether the private key is passphrase-protected.
-  - This closes the worst defect found so far. The public identity was printed exactly
-    once, by `keygen`, into a console that closes on its own, and **no command could ever
-    show it again**. The private key was safe and decryption kept working; the user simply
-    had no way to tell anyone how to encrypt to them, short of regenerating and losing
-    access to everything already sealed to the old identity. The only half meant to be
-    shared was write-once.
-  - It repairs rather than only reports: when the public file is absent, it is written from
-    the private key.
-
-- **`keygen` now writes the public half beside the private one**, `identity.ncrykey` and
-  `identity.ncrypub`, the way SSH writes `id_ed25519.pub`.
-  - Distinct final extensions rather than `.priv` and `.pub` before a shared one: Windows
-    reads only the last segment, so both would be the same file type with one icon and one
-    association. **A secret and a thing meant to be published should not look alike.**
-  - The extensionless name written by earlier versions is still honoured when it is the one
-    present. A rename would have been tidier and would also have been us moving somebody's
-    only copy of a private key to satisfy a naming preference.
-  - Consequence worth knowing: the public file is **not encrypted**, so the interface can
-    state which identity this machine uses, and show its fingerprint, without asking for a
-    passphrase first.
-  - **No fingerprint file, deliberately.** A fingerprint verifies a public identity by
-    being compared over a different channel. Written into the same directory as the key it
-    describes it verifies nothing, since whoever can replace one can replace the other in
-    the same gesture. It would look like a protection while being none.
-
-### Fixed
-
 - **A failure told the user to pass a flag they had no way of passing.** Creating an
   identity with no passphrase answered "pass -no-passphrase to store the identity
   unprotected", which is sound advice at a shell and an **impossible instruction** for
@@ -138,42 +190,6 @@ patched by CI at tag time and are never committed with a real version number.
 
 - An error message **echoed the entire private identity** into its output when the call was
   malformed. Locked or not, a private key has no business in a terminal or a log. Truncated.
-
-### Changed
-
-- `internal/keystore` extracted from `internal/cli`: the interface needs to know where
-  identities live, and `cli` already imports `webui`, so reading it from there was an
-  import cycle.
-  - Two tests failed on the rename and **that was correct behaviour**, they caught it. They
-    asserted the literal filename; they now ask `DefaultIdentityPath()` for it, so they
-    break when the contract changes rather than when a name does.
-
-### Changed
-
-- **`publish-apt.yml` is now chained after the build** (`workflow_run`) while remaining a
-  **separate** workflow: its own file, its own permissions, and above all a dedicated SSH key
-  unrelated to the build's other secrets.
-  - ⚠️ It was "manual only", and the consequence on the sibling projects was that **the apt
-    repository drifted in silence**: a package stayed at 0.1.0 while its releases went to
-    1.0.1 then 1.0.2. Same pattern as winget — **the single manual step in an otherwise
-    automated chain is the one that never happens.**
-  - The manual trigger protected against little anyway: pushing a tag and dispatching a
-    workflow need the **same** write permission, so it prevented accidental runs and not
-    malicious ones. The real protection remains the server-side restricted key, unchanged.
-  - Two guards, both necessary: `conclusion == 'success'` so a failed build publishes
-    nothing, and `startsWith(head_branch, 'v')` so a branch push triggers nothing. Either
-    one alone lets a case through.
-  - ⚠️ `workflow_run` trap: it only fires if the file is on the default branch, and its
-    context is that branch **and not the tag**, so the version comes from the event's
-    `head_branch` rather than `github.ref`.
-
-### Changed
-
-- Manifest keys now follow the estate's shared vocabulary (`windows_x64`, `macos_arm64`)
-  rather than Go's build target names (`windows_amd64`, `macos-amd64`). The **filenames**
-  keep Go's form: a manifest key that websites read and a build artefact name are two
-  different things, and the first release published them mixed.
-
 ## [0.3.1] - 2026-09-07
 
 ### Added
