@@ -10,6 +10,8 @@ patched by CI at tag time and are never committed with a real version number.
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-09-07
+
 ### Fixed
 
 - **APT publishing is called by the release workflow** (`workflow_call`) rather than
