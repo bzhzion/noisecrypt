@@ -31,6 +31,9 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /app.css", s.handleAsset("assets/app.css", "text/css; charset=utf-8"))
 	s.mux.HandleFunc("GET /api/profiles", s.handleProfiles)
 	s.mux.HandleFunc("POST /api/keygen", s.handleKeygen)
+	// Lecture seule : dit ce qui existe deja sur la machine, pour que l'interface
+	// annonce l'identite utilisee au lieu de presenter un champ vide.
+	s.mux.HandleFunc("GET /api/identity", s.handleIdentity)
 	s.mux.HandleFunc("POST /api/seal", s.handleSeal)
 	s.mux.HandleFunc("POST /api/open", s.handleOpen)
 	s.videoRoutes()

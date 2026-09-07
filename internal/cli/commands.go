@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
 	"math"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/bzhzion/noisecrypt/internal/container"
 	"github.com/bzhzion/noisecrypt/internal/crypt"
+	"github.com/bzhzion/noisecrypt/internal/keystore"
 	"github.com/bzhzion/noisecrypt/internal/profile"
 )
 
@@ -56,7 +58,7 @@ func runKeygen(env *Env, args []string) error {
 
 	path := *out
 	if path == "" {
-		p, err := DefaultIdentityPath()
+		p, err := keystore.DefaultIdentityPath()
 		if err != nil {
 			return err
 		}
@@ -72,32 +74,189 @@ func runKeygen(env *Env, args []string) error {
 	stored := id.String()
 	protected := false
 	if !*noPassphrase {
-		p, err := pass.resolve(env, "Passphrase to protect this identity: ")
+		p, err := demanderPhrase(env, pass)
 		if err != nil {
-			if errors.Is(err, ErrNoPassphrase) {
-				return errors.New("no passphrase supplied; pass -no-passphrase to store the identity unprotected")
-			}
 			return err
+		}
+		if p == nil {
+			// L'utilisateur a explicitement choisi de ne pas proteger, en repondant a
+			// une question. Ce chemin n'existe que quand un humain est devant.
+			*noPassphrase = true
 		}
 		defer zero(p)
-		locked, err := crypt.LockIdentity(id, p, kdf)
-		if err != nil {
-			return err
+		if p != nil {
+			locked, err := crypt.LockIdentity(id, p, kdf)
+			if err != nil {
+				return err
+			}
+			stored, protected = locked, true
 		}
-		stored, protected = locked, true
 	}
 
-	if err := writeIdentityFile(path, stored, *force); err != nil {
+	if err := keystore.WriteIdentityFile(path, stored, *force); err != nil {
 		return err
 	}
 
+	// The public half, written beside the private one. See keystore.go for why: the
+	// shareable value used to exist only in this command's output, in a console that
+	// closes by itself.
+	pub := keystore.PublicPathFor(path)
+	if err := keystore.WriteIdentityFile(pub, id.Public.String(), *force); err != nil {
+		return fmt.Errorf("the private identity was written to %s but its public half "+
+			"could not be: %w", path, err)
+	}
+
 	if protected {
-		fmt.Fprintf(env.Stdout, "Identity stored at %s, protected by your passphrase.\n", path)
+		fmt.Fprintf(env.Stdout, "Private identity stored at %s, protected by your passphrase.\n", path)
 	} else {
-		fmt.Fprintf(env.Stdout, "Identity stored at %s, UNPROTECTED: anyone who reads that file has it.\n", path)
+		fmt.Fprintf(env.Stdout, "Private identity stored at %s, UNPROTECTED: anyone who reads that file has it.\n", path)
 	}
 	fmt.Fprintln(env.Stdout, "Back that file up. Lose it and everything encrypted to it is gone.")
-	fmt.Fprintf(env.Stdout, "\nPublic identity (share this):\n%s\n", id.Public.String())
+	fmt.Fprintf(env.Stdout, "\nPublic identity written to %s. This is the half you hand out.\n", pub)
+	fmt.Fprintf(env.Stdout, "%s\n", id.Public.String())
+	fmt.Fprintf(env.Stdout, "\nFingerprint: %s\n", id.Public.Short())
+	fmt.Fprintln(env.Stdout, "Read that out to whoever sent you their own, over some other channel")
+	fmt.Fprintln(env.Stdout, "than the one the identity travelled on. That is the whole point of it.")
+	fmt.Fprintln(env.Stdout, "\nRun 'noisecrypt identity' at any time to see all of this again.")
+	return nil
+}
+
+// demanderPhrase obtient la phrase de passe, en redemandant quand un humain est devant.
+//
+// ⚠️ Le defaut que ceci corrige : un echec renvoyait « pass -no-passphrase to store the
+// identity unprotected ». C'est un conseil juste pour quelqu'un a un shell et une
+// instruction IMPOSSIBLE A SUIVRE pour quelqu'un qui vient de cliquer « Nouvelle identite »
+// dans un menu contextuel : il n'y a nulle part ou passer un flag. Le programme donnait donc
+// une consigne que le contexte de son lecteur rendait inapplicable, puis se fermait, et
+// l'utilisateur se retrouvait sans identite et sans chemin pour en obtenir une.
+//
+// Meme famille que le reste : un message ecrit pour l'utilisateur de la ligne de commande,
+// servi a quelqu'un qui a clique.
+//
+// Renvoie nil, nil quand l'utilisateur a choisi, en repondant a une question, de stocker
+// l'identite sans protection. Ce n'est pas un echec silencieux : c'est une decision prise
+// explicitement, et le seul moyen de la prendre quand on ne peut pas passer de flag.
+func demanderPhrase(env *Env, pass *passphraseSource) ([]byte, error) {
+	const essais = 3
+	for i := 1; ; i++ {
+		p, err := pass.resolve(env, "Passphrase to protect this identity: ")
+		if err == nil {
+			return p, nil
+		}
+		// Hors mode interactif, ou quand la phrase vient d'une source non humaine
+		// (fichier, variable d'environnement), redemander ne servirait a rien : la
+		// reponse serait identique. Le message d'origine est alors le bon.
+		if !env.Interactive || !pass.fromHuman(env) {
+			if errors.Is(err, ErrNoPassphrase) {
+				return nil, errors.New("no passphrase supplied; pass -no-passphrase to " +
+					"store the identity unprotected")
+			}
+			return nil, err
+		}
+
+		fmt.Fprintf(env.Stderr, "\n%v\n", err)
+		if i >= essais {
+			fmt.Fprintln(env.Stdout, "\nStill no passphrase after three tries.")
+			if oui(env, "Create the identity WITHOUT any protection? Anyone who reads the "+
+				"file then has it. [y/N] ") {
+				return nil, nil
+			}
+			return nil, errors.New("no identity created")
+		}
+		fmt.Fprintf(env.Stdout, "Try again (%d of %d).\n", i+1, essais)
+	}
+}
+
+// oui pose une question fermee et lit la reponse.
+//
+// Une question plutot qu'un flag, parce qu'un flag ne se tape pas depuis un menu
+// contextuel. Tout ce qui n'est pas un oui franc vaut non : le defaut d'une question dont
+// la mauvaise reponse est irreversible doit etre le refus.
+func oui(env *Env, question string) bool {
+	if env.Stdin == nil {
+		return false
+	}
+	fmt.Fprint(env.Stdout, question)
+	r := bufio.NewReader(env.Stdin)
+	ligne, err := r.ReadString('\n')
+	if err != nil && ligne == "" {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(ligne)) {
+	case "y", "yes", "o", "oui":
+		return true
+	}
+	return false
+}
+
+// runIdentity shows what is already on this machine.
+//
+// The command that was missing, and its absence was the real defect: the public identity
+// was printed once by keygen and could never be seen again. A user who closed that window
+// still had a working private key and no way to tell anyone how to encrypt to them, short
+// of regenerating and losing access to everything already sealed to the old identity.
+//
+// It also repairs the situation rather than only reporting it: when the public file is
+// absent, because the identity predates it, it is written from the private key.
+func runIdentity(env *Env, args []string) error {
+	fs := newFlagSet(env, "identity", "[-identity FILE]")
+	which := fs.String("identity", "", "read this identity instead of the default one")
+	unlock := &passphraseSource{}
+	unlock.registerAs(fs, "identity-passphrase", "the passphrase protecting the identity file")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	path := *which
+	if path == "" {
+		p, err := keystore.DefaultIdentityPath()
+		if err != nil {
+			return err
+		}
+		path = p
+	}
+	if _, err := os.Stat(path); err != nil {
+		return fmt.Errorf("no identity at %s. Run 'noisecrypt keygen' to create one", path)
+	}
+
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	// Lu uniquement pour savoir s'il est protege. `resolveIdentity` attend un CHEMIN ou
+	// une identite en ligne, pas le contenu d'un fichier : lui passer le contenu le fait
+	// echouer sur « ni une identite privee ni un fichier lisible », ce qui envoie chercher
+	// un fichier corrompu la ou l'appel etait simplement mal forme.
+	locked := crypt.IsLockedIdentity(strings.TrimSpace(string(raw)))
+
+	id, err := resolveIdentity(env, path, unlock)
+	if err != nil {
+		return err
+	}
+
+	fmt.Fprintf(env.Stdout, "Private identity: %s\n", path)
+	if locked {
+		fmt.Fprintln(env.Stdout, "  protected by a passphrase.")
+	} else {
+		fmt.Fprintln(env.Stdout, "  UNPROTECTED: anyone who reads that file has it.")
+	}
+
+	pub := keystore.PublicPathFor(path)
+	if _, err := os.Stat(pub); err != nil {
+		// Ecrite plutot que seulement signalee absente : elle se derive de la privee,
+		// donc il n'y a aucune raison de demander a l'utilisateur de la reconstituer.
+		if err := keystore.WriteIdentityFile(pub, id.Public.String(), false); err != nil {
+			fmt.Fprintf(env.Stderr, "  (could not write %s: %v)\n", pub, err)
+		} else {
+			fmt.Fprintf(env.Stdout, "\nPublic identity was missing; written to %s.\n", pub)
+		}
+	} else {
+		fmt.Fprintf(env.Stdout, "\nPublic identity: %s\n", pub)
+	}
+
+	fmt.Fprintf(env.Stdout, "%s\n", id.Public.String())
+	fmt.Fprintf(env.Stdout, "\nFingerprint: %s\n", id.Public.Short())
+	fmt.Fprintln(env.Stdout, "Compare that over a channel the identity did not travel on.")
 	return nil
 }
 
@@ -363,6 +522,20 @@ func resolveRecipient(s string) (crypt.PublicIdentity, error) {
 // A stored identity may be locked under a passphrase, so this asks for one when it meets
 // that shape and not before: prompting first and discovering afterwards that no
 // passphrase was wanted is how people learn to type one at any prompt.
+// abrege raccourcit une valeur avant de la citer dans une erreur.
+//
+// Le message ci-dessous recopiait la valeur entiere, donc une identite privee complete
+// quand l'appel etait mal forme. Meme verrouillee, une cle privee n'a rien a faire dans
+// une sortie de terminal ou un journal, et un blob de 400 caracteres noie le message qui
+// compte.
+func abrege(s string) string {
+	const max = 40
+	if len(s) <= max {
+		return s
+	}
+	return s[:max] + "..."
+}
+
 func resolveIdentity(env *Env, s string, unlock *passphraseSource) (*crypt.PrivateIdentity, error) {
 	if s != "" {
 		if id, err := crypt.ParsePrivateIdentity(s); err == nil {
@@ -372,7 +545,7 @@ func resolveIdentity(env *Env, s string, unlock *passphraseSource) (*crypt.Priva
 
 	path := s
 	if path == "" {
-		p, err := DefaultIdentityPath()
+		p, err := keystore.DefaultIdentityPath()
 		if err != nil {
 			return nil, err
 		}
@@ -384,7 +557,8 @@ func resolveIdentity(env *Env, s string, unlock *passphraseSource) (*crypt.Priva
 		if s == "" {
 			return nil, fmt.Errorf("no identity given and none stored at %s", path)
 		}
-		return nil, fmt.Errorf("%q is neither a private identity nor a readable file", s)
+		return nil, fmt.Errorf("%q is neither a private identity nor a readable file",
+			abrege(s))
 	}
 	stored := strings.TrimSpace(string(b))
 

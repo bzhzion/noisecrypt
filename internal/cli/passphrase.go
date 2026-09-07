@@ -66,6 +66,21 @@ var ErrNoPassphrase = errors.New("no passphrase supplied")
 // made elsewhere, or made before this check existed, must still open.
 const MinPassphraseLength = 8
 
+// fromHuman says whether resolve would prompt somebody who can actually answer.
+//
+// The distinction matters for retrying: asking a human twice can produce a different
+// answer, asking a file twice cannot. A retry loop that does not check this turns one
+// clear error into the same error three times.
+//
+// ⚠️ The terminal test is not redundant with the flag tests, and leaving it out was
+// measured rather than imagined: with standard input on a pipe, a retry loop guarded only
+// by the flags printed "standard input is not a terminal" three times in a row before
+// giving up. No flag is set, `ReadPassphrase` is present, and yet nobody can type. The
+// condition being retried has to be one a human could change.
+func (s *passphraseSource) fromHuman(env *Env) bool {
+	return s.file == "" && s.env == "" && env.ReadPassphrase != nil && stdinIsTerminal()
+}
+
 // resolve returns the passphrase, prompting on the terminal as a last resort.
 //
 // There is deliberately no --passphrase flag. A passphrase on the command line

@@ -53,6 +53,18 @@ type Env struct {
 
 	// ReadPassphrase reads a passphrase without echoing it. Tests replace it.
 	ReadPassphrase func(prompt string) ([]byte, error)
+
+	// Interactive says a human is watching a console that will close on its own.
+	//
+	// Set only when the process was launched with `-pause`, which is to say from the
+	// right-click and double-click entries this program writes itself. It is not a guess
+	// about the terminal: a hidden console reports itself as a terminal, which is how an
+	// earlier heuristic managed to hang a scheduled task.
+	//
+	// It changes what a failure is allowed to say. "pass -no-passphrase" is sound advice
+	// to somebody at a shell and an impossible instruction to somebody who clicked a menu
+	// entry: there is nowhere to pass it. So the same code asks again instead.
+	Interactive bool
 }
 
 // DefaultEnv returns the environment used by the real binary.
@@ -69,6 +81,7 @@ var commands = []command{
 	{"encode", "encrypt a file and carry it as video", runEncode},
 	{"decode", "recover a file from a video", runDecode},
 	{"keygen", "generate a hybrid X25519 + ML-KEM-768 identity", runKeygen},
+	{"identity", "show the identity on this machine: its public half and fingerprint", runIdentity},
 	{"seal", "encrypt a file into a .ncry container, without the video step", runSeal},
 	{"open", "decrypt a .ncry container back to the original file", runOpen},
 	{"estimate", "report the video cost of encoding a file, before encoding it", runEstimate},
@@ -109,6 +122,9 @@ func Run(env *Env, args []string) int {
 	}
 	if pause {
 		defer pauseBeforeClosing(env)
+		// Le meme drapeau qui garde la console ouverte dit aussi qu'un humain la
+		// regarde, donc qu'un message renvoyant vers un flag est inutilisable.
+		env.Interactive = true
 	}
 
 	// Every spelling anyone actually types, rather than the three that happened to get

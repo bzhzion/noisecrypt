@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"github.com/bzhzion/noisecrypt/internal/keystore"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -14,7 +15,7 @@ import (
 
 func TestKeygenStoresAndOpenFindsWithoutBeingTold(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv(storeDirEnvVar, home)
+	t.Setenv(keystore.StoreDirEnvVar, home)
 	t.Setenv("NC_TEST_PASS", "mon chat dort sur le radiateur")
 
 	stdout, stderr, code := run("keygen", "-passphrase-env", "NC_TEST_PASS")
@@ -25,7 +26,11 @@ func TestKeygenStoresAndOpenFindsWithoutBeingTold(t *testing.T) {
 		t.Error("keygen did not protect the identity by default, which is what makes a known location defensible")
 	}
 
-	stored, err := os.ReadFile(filepath.Join(home, identityBase))
+	chemin, err := keystore.DefaultIdentityPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored, err := os.ReadFile(chemin)
 	if err != nil {
 		t.Fatalf("nothing was stored at the default location: %v", err)
 	}
@@ -67,7 +72,7 @@ func TestKeygenStoresAndOpenFindsWithoutBeingTold(t *testing.T) {
 
 func TestOpenRefusesTheWrongIdentityPassphrase(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv(storeDirEnvVar, home)
+	t.Setenv(keystore.StoreDirEnvVar, home)
 	t.Setenv("NC_TEST_PASS", "la bonne phrase de passe")
 	t.Setenv("NC_TEST_WRONG", "pas la bonne du tout")
 
@@ -95,7 +100,7 @@ func TestOpenRefusesTheWrongIdentityPassphrase(t *testing.T) {
 // -no-passphrase has to keep working and has to say what it did, since a key stored
 // unprotected in a predictable place is exactly the thing this design set out to avoid.
 func TestKeygenWithoutAPassphraseSaysSo(t *testing.T) {
-	t.Setenv(storeDirEnvVar, t.TempDir())
+	t.Setenv(keystore.StoreDirEnvVar, t.TempDir())
 
 	stdout, stderr, code := run("keygen", "-no-passphrase")
 	if code != 0 {
@@ -112,12 +117,15 @@ func TestKeygenWithoutAPassphraseSaysSo(t *testing.T) {
 // Administrators entries inherited from its parent.
 func TestTheStoredIdentityIsNotReadableByEveryone(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv(storeDirEnvVar, home)
+	t.Setenv(keystore.StoreDirEnvVar, home)
 
 	if _, stderr, code := run("keygen", "-no-passphrase"); code != 0 {
 		t.Fatalf("keygen exited %d: %s", code, stderr)
 	}
-	path := filepath.Join(home, identityBase)
+	path, err := keystore.DefaultIdentityPath()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if runtime.GOOS == "windows" {
 		// The mode is meaningless here, so the only honest check is that the call

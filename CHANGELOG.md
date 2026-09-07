@@ -10,6 +10,62 @@ patched by CI at tag time and are never committed with a real version number.
 
 ## [Unreleased]
 
+### Added
+
+- **`noisecrypt identity`**, which shows what is already on this machine: the public
+  identity, its fingerprint, and whether the private key is passphrase-protected.
+  - This closes the worst defect found so far. The public identity was printed exactly
+    once, by `keygen`, into a console that closes on its own, and **no command could ever
+    show it again**. The private key was safe and decryption kept working; the user simply
+    had no way to tell anyone how to encrypt to them, short of regenerating and losing
+    access to everything already sealed to the old identity. The only half meant to be
+    shared was write-once.
+  - It repairs rather than only reports: when the public file is absent, it is written from
+    the private key.
+
+- **`keygen` now writes the public half beside the private one**, `identity.ncrykey` and
+  `identity.ncrypub`, the way SSH writes `id_ed25519.pub`.
+  - Distinct final extensions rather than `.priv` and `.pub` before a shared one: Windows
+    reads only the last segment, so both would be the same file type with one icon and one
+    association. **A secret and a thing meant to be published should not look alike.**
+  - The extensionless name written by earlier versions is still honoured when it is the one
+    present. A rename would have been tidier and would also have been us moving somebody's
+    only copy of a private key to satisfy a naming preference.
+  - Consequence worth knowing: the public file is **not encrypted**, so the interface can
+    state which identity this machine uses, and show its fingerprint, without asking for a
+    passphrase first.
+  - **No fingerprint file, deliberately.** A fingerprint verifies a public identity by
+    being compared over a different channel. Written into the same directory as the key it
+    describes it verifies nothing, since whoever can replace one can replace the other in
+    the same gesture. It would look like a protection while being none.
+
+### Fixed
+
+- **A failure told the user to pass a flag they had no way of passing.** Creating an
+  identity with no passphrase answered "pass -no-passphrase to store the identity
+  unprotected", which is sound advice at a shell and an **impossible instruction** for
+  somebody who just clicked "New identity" in a context menu: there is nowhere to type it.
+  - When a human is watching, it now **asks again**, three times, then offers to continue
+    without protection as a **question** rather than a flag.
+  - The guard on that loop had to be measured, not reasoned: checking only the passphrase
+    flags was not enough. With standard input on a pipe, the loop printed "standard input
+    is not a terminal" **three times in a row** before giving up. No flag was set and the
+    prompt function existed, yet nobody could type. **The condition being retried has to be
+    one a human could actually change.**
+  - Nothing partial is ever written on any of these paths, verified.
+
+- An error message **echoed the entire private identity** into its output when the call was
+  malformed. Locked or not, a private key has no business in a terminal or a log. Truncated.
+
+### Changed
+
+- `internal/keystore` extracted from `internal/cli`: the interface needs to know where
+  identities live, and `cli` already imports `webui`, so reading it from there was an
+  import cycle.
+  - Two tests failed on the rename and **that was correct behaviour**, they caught it. They
+    asserted the literal filename; they now ask `DefaultIdentityPath()` for it, so they
+    break when the contract changes rather than when a name does.
+
 ### Changed
 
 - **`publish-apt.yml` is now chained after the build** (`workflow_run`) while remaining a
