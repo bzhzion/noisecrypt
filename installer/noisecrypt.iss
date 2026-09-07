@@ -46,7 +46,23 @@ AppPublisher={#Publisher}
 AppPublisherURL={#AppURL}
 AppSupportURL={#AppURL}/issues
 AppUpdatesURL={#AppURL}/releases
-VersionInfoVersion=0.0.0.0
+; Derivee de la version reelle plutot que figee a 0.0.0.0, qui est ce qu'elle valait
+; jusqu'a la 0.4.0 : l'installateur publie annoncait donc 0.0.0.0 dans ses proprietes
+; Windows, exactement le genre de nombre qui ment qu'on passe son temps a traquer.
+;
+; Le champ n'accepte qu'un quadruplet numerique, alors qu'une version semver peut porter
+; un suffixe de preversion. On ne garde donc que la partie x.y.z et on complete, et si
+; AppVersion n'a pas cette forme on retombe sur 0.0.0.0 plutot que de faire echouer la
+; compilation : un installateur sans version est genant, un installateur qui ne se
+; construit pas est bloquant.
+#define NumVer AppVersion
+#if pos("-", NumVer) > 0
+  #define NumVer Copy(NumVer, 1, pos("-", NumVer) - 1)
+#endif
+#if (NumVer == "dev") || (pos(".", NumVer) == 0)
+  #define NumVer "0.0.0"
+#endif
+VersionInfoVersion={#NumVer}.0
 VersionInfoProductName={#AppName}
 VersionInfoCompany={#Publisher}
 VersionInfoDescription={#AppName} setup

@@ -10,6 +10,22 @@ patched by CI at tag time and are never committed with a real version number.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The installer announced `0.0.0.0` as its file version.** It was hardcoded, so every
+  published installer up to and including 0.4.0 reports that in its Windows properties.
+  Exactly the kind of number that lies, found while verifying the 0.4.0 release rather than
+  by reading the file.
+  - Derived from the real version now. The field only accepts a numeric quadruplet while a
+    semver version may carry a prerelease suffix, so the `x.y.z` part is kept and completed.
+  - If the version does not have that shape it falls back to `0.0.0.0` **rather than
+    failing the build**: an installer without a version is annoying, an installer that does
+    not build is blocking.
+  - Verified on the three shapes: `0.4.1` gives `0.4.1.0`, `1.2.3-beta.4` gives `1.2.3.0`,
+    and `dev` falls back. **The fallback was provoked, not assumed.**
+  - Takes effect on the next release. 0.4.0's installer keeps `0.0.0.0`, and rebuilding a
+    published artefact to change a metadata field is not worth breaking its hash for.
+
 ## [0.4.0] - 2026-09-07
 
 **Code identique à 0.3.2.** Publiée uniquement pour que le numéro dise ce que la version
