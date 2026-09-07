@@ -27,12 +27,13 @@ patched by CI at tag time and are never committed with a real version number.
     file does not come back. Asking for audio would also make yt-dlp merge two streams
     through FFmpeg for a track that gets discarded.
   - `-S res,br`, resolution then bitrate, stated rather than left to yt-dlp's default
-    ordering. **Measured on a real 2160p video: `bv*` alone chose an AV1 rendition at
-    8982k over a VP9 rendition of the same 3840x2160 at 17174k**, so the default was
-    picking the more compressed of two equally large options. Both decode, but the wider
-    margin is the one to take, and an ordering that is written down cannot change
-    underneath us. Checked with `--simulate --print`, which answers the format question
-    without downloading anything.
+    ordering. **It changes the answer, measured on the actual validation video and not
+    inferred**: YouTube offered three renditions at 1080x1920, H.264 at 1639k, VP9 at
+    470k and AV1 at 409k, and `bv*` alone took the AV1 while the explicit sort takes the
+    H.264. **Four times the bitrate at identical resolution**, for one flag. Both probably
+    decode, but the wider margin is the one to take, and an ordering that is written down
+    cannot change underneath us. Checked with `--simulate --print`, which answers the
+    format question without downloading anything.
   - Fixed output basename, so the video's title never reaches a path. A title is
     attacker-supplied text, and a fixed name removes the question rather than answering it
     with an escaping rule.
@@ -68,21 +69,23 @@ patched by CI at tag time and are never committed with a real version number.
     the shape `mime/multipart` writes. The check could never fire, and a guard that cannot
     fire is worse than none because it looks like the reason something works. The test that
     pins the behaviour stayed.
-  - Verified end to end against a real download: fetched, named, bounded, handed to the
-    decoder, and correctly refused as not being a NoiseCrypt video. **Not yet verified is
-    the one link that needs a platform**, namely that `-f bv*/b` picks the rendition a
-    container survives in. That needs a video uploaded for the purpose, and this time its
-    address gets recorded.
-  - ⚠️ **YouTube downloads currently fail, and it is not this tool.** yt-dlp answers `403`
-    on the media URL. **Corrected twice while diagnosing, which is the useful part.** The
-    first reading was "YouTube needs a JavaScript runtime", from yt-dlp's own warning:
-    wrong, that warning only appeared because the shell it ran from exports a POSIX
-    `PATH` that a Windows executable cannot use, and deno was installed all along. The
-    second reading was "an old yt-dlp": also wrong, upgrading to 2026.07.04 changed
-    nothing. **yt-dlp fails identically with none of this tool's arguments at all**, which
-    is what settles it. Other sites and direct video URLs work. Nothing to fix here, but
-    it does mean replaying the platform validation needs the question answered on
-    YouTube's side first.
+  - **Verified end to end through a real platform round trip.** 50 KiB of random bytes
+    encoded with the `social` profile, uploaded to YouTube, fetched back with
+    `decode -url`, and recovered **byte for byte**: 448 frames of 448, none unreadable,
+    same SHA256 either side. The address is recorded this time, in the parc documentation
+    along with the two from the earlier validation, which turned out never to have been
+    lost, only never written down.
+  - ⚠️ **One public video answered `403`, and three readings of it were wrong before the
+    right one. That sequence is the useful part.** First: "YouTube needs a JavaScript
+    runtime", taken from yt-dlp's own warning. Wrong, and the warning only appeared
+    because the shell it ran from exports a POSIX `PATH` a Windows executable cannot use,
+    with deno installed the whole time. Second: "an old yt-dlp". Also wrong, upgrading
+    changed nothing. Third, and this one was mine rather than inherited: "YouTube blocks
+    downloads, so the platform validation cannot be replayed". **Wrong too, and the worst
+    of the three**, because our own unlisted video downloaded without complaint minutes
+    later. Only that one public video refuses. **A failure on one resource says nothing
+    about access to the service**: test on the exact resource needed, never on a
+    neighbour.
 
 ### Changed
 
