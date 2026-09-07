@@ -76,6 +76,30 @@ func TestShellRegisterWritesEveryEntry(t *testing.T) {
 		}
 	}
 
+	// The ProgID needs DefaultIcon, or the containers themselves stay blank pages in
+	// Explorer however good the icons on the menu verbs are. Checked separately from the
+	// commands above because it is a different key and a different failure: the gesture
+	// works, the file just looks like nothing.
+	icon, err := registry.OpenKey(registry.CURRENT_USER, decryptKey()+`\DefaultIcon`, registry.QUERY_VALUE)
+	if err != nil {
+		t.Errorf("the file type has no icon: %v", err)
+	} else {
+		got, _, _ := icon.GetStringValue("")
+		icon.Close()
+		// The document icon specifically, not index 0 which is the application tile.
+		// Asserted on the exact index because the wrong one fails silently: Windows
+		// renders whatever icon is there and every container ends up wearing the
+		// program's face, with nothing anywhere reporting a problem.
+		if !strings.HasSuffix(got, ","+containerIconIndex) {
+			t.Errorf("DefaultIcon is %q, expected it to end with the container icon "+
+				"index %q", got, containerIconIndex)
+		}
+		if strings.HasSuffix(got, ",0") {
+			t.Error("DefaultIcon points at index 0, which is the application tile: " +
+				"containers would look like copies of the program")
+		}
+	}
+
 	// The extension has to point at the ProgID, or double-clicking does nothing at all.
 	ext, err := registry.OpenKey(registry.CURRENT_USER, extensionKey(), registry.QUERY_VALUE)
 	if err != nil {

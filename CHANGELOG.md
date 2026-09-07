@@ -12,6 +12,51 @@ patched by CI at tag time and are never committed with a real version number.
 
 ### Added
 
+- **A separate icon for `.ncry` files, and the file association that shows it.** The
+  executable is a program you launch; a container is a document somebody handed you.
+  Shipping one icon for both says those are the same kind of thing, and the container
+  icon is the one that matters most: it appears in a download folder, next to files from
+  every other application, and it has to say "sealed file" before anything else.
+  - The document mark is a folded page carrying the macro-cell grid the codec actually
+    draws. **Page in ink, cells in paper**, which is the inverse of real paper and is the
+    right way round twice over: it matches the application tile so the two read as one
+    product, and it is what survives an unknown background. The light-page version
+    depended entirely on its keyline to exist against a light file manager; a dark page
+    outlined in paper reads on light, grey and dark alike, which demotes the keyline from
+    load-bearing to refinement.
+  - Registered as `DefaultIcon` on the ProgID, at **index 1**. Distinct from the `Icon`
+    values on the menu verbs, which only decorate the context menu: without
+    `DefaultIcon` the files themselves stay blank pages however good those are.
+  - ⚠️ Pointing it at index 0 fails **silently**: Windows renders the application tile
+    and every container wears the program's face, with nothing anywhere reporting a
+    problem. Pinned by a test, and the built executable was checked by extracting both
+    icons and comparing them pixel for pixel against the generated references (exact
+    match, against a distance of 149/255 to the wrong one). An earlier check used mean
+    brightness to tell the two apart, which worked only while one mark was light: the
+    inversion above would have made it agree with anything.
+
+### Changed
+
+- **Every icon size now comes from one drawing, reduced, instead of the drawing code
+  re-running at each size.** The old way did not hold together: margins and cell sizes
+  are integer fractions of the canvas, they round differently at each size, and the
+  32-pixel icon came out with nine columns where the 48-pixel one had seven. Two pictures
+  of the same thing that were not the same picture.
+  - Drawn at 768 pixels, which every required size divides exactly (48, 32, 24, 16, 12,
+    6, 3), so each reduction is a whole-number box average needing no resampling and no
+    dependency. A size that did not divide it is rejected rather than silently rescaled.
+  - The averaging is done on **premultiplied** values. Straight NRGBA averaging looks
+    correct and is not: a transparent pixel still carries a colour, here black, so the
+    page picked up a dark fringe along the folded corner. Invisible at 256, obvious at 24.
+  - The honest cost: 16 pixels is softer than a version drawn natively at 16 would be.
+    Coherence across sizes was worth more than crispness at the smallest one.
+  - Two defects fixed while looking at it rather than at the code. The pattern started
+    below the fold, which is the obvious way to avoid drawing on it and left the top
+    third of the page empty, so cells that would touch the fold are now skipped
+    individually. And a whole number of rows left a blank band a cell high across the
+    foot of the page: the leftover is now split top and bottom, because an asymmetric gap
+    inside a symmetric frame reads as a printing fault rather than as a margin.
+
 - **An icon, and Windows metadata.** The executable had neither, so Explorer drew it as a
   generic console program and the context menu entries added above had nothing to show.
   - **The mark is drawn in code**, by `tools/icongen`, not in an editor. It is an N built

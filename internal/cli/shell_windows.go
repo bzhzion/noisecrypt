@@ -37,6 +37,13 @@ import (
 
 const progID = "NoiseCrypt.Container"
 
+// Which icon inside the executable a container gets. The binary carries two: the
+// application tile at 0, and the document page at 1. Kept as a named constant next to a
+// test that checks the executable really has a second icon, because the failure mode of
+// getting this wrong is not an error: Windows silently falls back to index 0, so every
+// container would quietly wear the program's own icon and nothing would report it.
+const containerIconIndex = "1"
+
 // shellRoot is a variable so a test can exercise the registry mechanics somewhere
 // harmless. A test that rewrites the developer's real file associations is a test that
 // gets disabled, and then the mechanics go untested.
@@ -139,6 +146,26 @@ func shellRegister(env *Env) error {
 	_ = desc.SetStringValue("", "NoiseCrypt encrypted container")
 	desc.Close()
 
+	// What a .ncry looks like in Explorer. Distinct from the Icon values set on the
+	// verbs above, which only decorate the menu entries: without DefaultIcon on the
+	// ProgID the files themselves stay blank white pages, which is the one place the
+	// icon is actually load-bearing. A container is meant to be recognisable at a
+	// glance, and an unrecognisable one invites double-clicking to find out.
+	//
+	// Index 1, not 0. The executable carries two icons: the tile at 0, which is the
+	// program, and the page at 1, which is a document. Pointing a file type at index 0
+	// would give every container the application's own icon, and then a folder of
+	// containers looks like a folder of copies of the program.
+	iconKey, _, err := registry.CreateKey(registry.CURRENT_USER, decryptKey()+`\DefaultIcon`, registry.SET_VALUE)
+	if err != nil {
+		return err
+	}
+	if err := iconKey.SetStringValue("", quoted+","+containerIconIndex); err != nil {
+		iconKey.Close()
+		return err
+	}
+	iconKey.Close()
+
 	ext, _, err := registry.CreateKey(registry.CURRENT_USER, extensionKey(), registry.SET_VALUE)
 	if err != nil {
 		return err
@@ -169,7 +196,7 @@ func shellUnregister(env *Env) error {
 		encryptKey() + `\command`, encryptKey(),
 		identityKey() + `\command`, identityKey(),
 		decryptKey() + `\shell\open\command`, decryptKey() + `\shell\open`,
-		decryptKey() + `\shell`, decryptKey(),
+		decryptKey() + `\shell`, decryptKey() + `\DefaultIcon`, decryptKey(),
 		extensionKey(),
 	} {
 		if err := registry.DeleteKey(registry.CURRENT_USER, key); err != nil && !os.IsNotExist(err) {

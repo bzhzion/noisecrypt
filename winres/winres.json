@@ -1,7 +1,10 @@
 {
   "RT_GROUP_ICON": {
-    "APP": {
-      "0000": "icon.ico"
+    "#1": {
+      "0000": "../assets/noisecrypt.ico"
+    },
+    "#2": {
+      "0000": "../assets/container.ico"
     }
   },
   "RT_MANIFEST": {
