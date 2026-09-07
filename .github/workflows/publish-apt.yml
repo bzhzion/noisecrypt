@@ -1,22 +1,35 @@
 name: Publish to the APT repository
 
-# Deliberately decoupled from the release build: manual trigger only, never automatic.
-# Same reason as publish-winget.yml, with one security argument on top: this is the only
-# workflow that touches a production machine (axolotl) from a public repository, so the
-# less it fires on its own, the better. Transcribed from the sibling projects beammeup and
-# hublot, which publish to the same shared repository.
+# A SEPARATE workflow from the build, but triggered after it.
 #
-# The SSH key used here (`AXOLOTL_APT_KEY`) is **dedicated and restricted server-side**: a
-# forced command in `authorized_keys` limits it to publishing a package named `noisecrypt`,
-# with no shell and no file reads. That is what makes it acceptable for a public repository
-# to hold a key pointing at a production machine. **Never replace it with a general-access
-# key.** The script reads the package on standard input, checks it really is a .deb and
-# really is named noisecrypt, then hands it to reprepro.
+# The separation is deliberate: its own file, its own permissions, and above all a dedicated
+# SSH key that has nothing to do with the build's other secrets. What changed on 2026-09-07 is
+# the trigger.
 #
-# The apt repository is shared with justmakeq, hae, beammeup and hublot. reprepro merges
-# rather than overwrites: it already knows the other packages from its local database.
+# ⚠️ It was "manual only", for a real security reason (the only workflow touching a production
+# machine from a public repository), and the consequence was that **the apt repository drifted
+# in silence**: on the sibling projects a package stayed at 0.1.0 while its releases went to
+# 1.0.1 then 1.0.2. Same pattern as winget: the single manual step in an otherwise automated
+# chain is the one that never happens. And the manual trigger protected against little, since
+# pushing a tag and dispatching a workflow need the same write permission, so it prevented
+# accidental runs and not malicious ones. The real protection is elsewhere, in the restricted
+# key below.
+#
+# The SSH key (`AXOLOTL_APT_KEY`) is **dedicated and restricted server-side**: a forced command
+# in `authorized_keys` limits it to publishing a package named `noisecrypt`, with no shell and
+# no file reads. That is what makes a key pointing at a production machine acceptable in a
+# public repository. **Never replace it with a general-access key.**
+#
+# ⚠️ `workflow_run` trap: it only fires if this file is on the default branch, and its context
+# is that branch rather than the tag. The version is therefore read from the event's
+# `head_branch`, not from `github.ref`.
 
 on:
+  # Chained after the build that produces the .deb packages.
+  workflow_run:
+    workflows: ["Release"]
+    types: [completed]
+  # Kept so a specific version can be replayed by hand.
   workflow_dispatch:
     inputs:
       version:
@@ -32,8 +45,27 @@ jobs:
     name: Publish the .deb packages on apt.breizhzion.com
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # A failed build must publish nothing, and a branch build has no release to attach to.
+    # Both conditions are needed: `conclusion` alone would let a branch push through,
+    # `head_branch` alone would let a failure through.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       startsWith(github.event.workflow_run.head_branch, 'v'))
 
     steps:
+      - name: Resolve the version
+        id: v
+        env:
+          INPUT: ${{ inputs.version }}
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          set -euo pipefail
+          if [ -n "${INPUT:-}" ]; then V="$INPUT"; else V="${BRANCH#v}"; fi
+          if [ -z "$V" ]; then echo "::error::could not determine the version"; exit 1; fi
+          echo "Version: $V"
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+
       # Refuses rather than half-running. Without this the job reaches `ssh` with an empty
       # key and fails there, which reads as a broken key rather than as "never set up".
       - name: Preflight
@@ -59,7 +91,7 @@ jobs:
       - name: Fetch the .deb packages from the release
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ inputs.version }}
+          VERSION: ${{ steps.v.outputs.version }}
         run: |
           set -euo pipefail
           gh release download "v$VERSION" --repo "${{ github.repository }}" \

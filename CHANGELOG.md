@@ -12,6 +12,25 @@ patched by CI at tag time and are never committed with a real version number.
 
 ### Changed
 
+- **`publish-apt.yml` is now chained after the build** (`workflow_run`) while remaining a
+  **separate** workflow: its own file, its own permissions, and above all a dedicated SSH key
+  unrelated to the build's other secrets.
+  - ⚠️ It was "manual only", and the consequence on the sibling projects was that **the apt
+    repository drifted in silence**: a package stayed at 0.1.0 while its releases went to
+    1.0.1 then 1.0.2. Same pattern as winget — **the single manual step in an otherwise
+    automated chain is the one that never happens.**
+  - The manual trigger protected against little anyway: pushing a tag and dispatching a
+    workflow need the **same** write permission, so it prevented accidental runs and not
+    malicious ones. The real protection remains the server-side restricted key, unchanged.
+  - Two guards, both necessary: `conclusion == 'success'` so a failed build publishes
+    nothing, and `startsWith(head_branch, 'v')` so a branch push triggers nothing. Either
+    one alone lets a case through.
+  - ⚠️ `workflow_run` trap: it only fires if the file is on the default branch, and its
+    context is that branch **and not the tag**, so the version comes from the event's
+    `head_branch` rather than `github.ref`.
+
+### Changed
+
 - Manifest keys now follow the estate's shared vocabulary (`windows_x64`, `macos_arm64`)
   rather than Go's build target names (`windows_amd64`, `macos-amd64`). The **filenames**
   keep Go's form: a manifest key that websites read and a build artefact name are two
