@@ -10,6 +10,32 @@ patched by CI at tag time and are never committed with a real version number.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`latest.json` advertised 0.3.1 on the most-read platform key, and 0.5.0 published that
+  way.** Found by checking the served manifest after the release instead of trusting the
+  green workflow. It carried **two naming conventions at once**: a current set
+  (`windows_x64`, `macos_x64`, `macos_arm64`) correctly at 0.5.0, and an abandoned set
+  (`windows_amd64`, `macos-amd64`, `macos-arm64`) frozen at 0.3.1 with download links to
+  match. A site reading the first of those would have shown a version two minors old,
+  with nothing anywhere reporting a problem.
+  - Cause: the step started from the previous manifest and only **overwrote** the keys it
+    knows, so keys from a convention this project stopped using in 0.3.1 survived every
+    release since. Now built from scratch.
+  - **The merge was defending against a hazard that does not exist here.** Its comment
+    cited the workflow's `concurrency` guard, but this job is the only writer of the file
+    and writes every platform in one pass, checked across all the repository's workflows.
+    It preserved no useful key and accumulated only stale ones. A manifest describes the
+    current state; it has no history to keep. Same shape as the empty-file-part guard
+    removed earlier in this release: a defence written for a case that cannot arise, which
+    then causes the fault it was meant to prevent.
+  - The live file was repaired by hand with the fixed logic, after backing up the old one
+    and verifying that all six URLs it names answer `200` with sizes matching the release
+    assets. A manifest pointing at a 404 would be worse than a stale one.
+  - Verified against the other three applications sharing `dl.breizhzion.com`: hae,
+    beammeup and hublot each carry a single consistent key set, so this was NoiseCrypt's
+    alone and not the shared convention's.
+
 ## [0.5.0] - 2026-09-07
 
 ### Added

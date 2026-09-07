@@ -386,8 +386,6 @@ jobs:
           for CIBLE in darwin-amd64 darwin-arm64; do
             envoyer "artefacts/noisecrypt-$V-$CIBLE" "noisecrypt-$CIBLE" application/octet-stream
           done
-          # Lire-modifier-ecrire du manifeste, protege par le `concurrency` du workflow.
-          aws s3 cp "s3://breizhzion-releases/noisecrypt/latest.json" _ancien.json             --endpoint-url "$R2" 2>/dev/null || echo '{}' > _ancien.json
 
       - name: Build latest.json
         env:
@@ -397,12 +395,21 @@ jobs:
           import json, os
           base = "https://dl.breizhzion.com/noisecrypt"
           v = os.environ["VERSION"]
-          try:
-              with open("_ancien.json") as f:
-                  existant = json.load(f)
-          except Exception:
-              existant = {}
-          f = existant.get("files", {})
+          # ⚠️ Reconstruit entierement, et surtout PAS fusionne avec le manifeste
+          # precedent. La version d'avant repartait de `existant["files"]` et se contentait
+          # d'ecraser les cles qu'elle connait, ce qui laissait survivre indefiniment celles
+          # d'une convention de nommage abandonnee : la 0.5.0 a ete publiee avec
+          # `windows_amd64`, `macos-amd64` et `macos-arm64` **encore figees a 0.3.1**, a
+          # cote des `windows_x64`/`macos_x64`/`macos_arm64` a jour. Un site qui lisait la
+          # premiere annoncait donc une version vieille de deux mineures, avec un lien de
+          # telechargement assorti, et rien ne le signalait.
+          #
+          # La fusion se defendait par le `concurrency` du workflow, mais elle ne protegeait
+          # rien : ce job est le seul ecrivain de ce fichier et il ecrit toutes les
+          # plateformes en une passe, verifie sur les workflows du depot. Elle ne conservait
+          # donc aucune cle utile et n'accumulait que des periemees. Le manifeste decrit
+          # l'etat courant, il n'a pas d'historique a preserver.
+          f = {}
           # Les cles suivent le vocabulaire commun au parc, x64 et arm64 avec des
           # soulignes, et non les noms de cible de Go (amd64, darwin-). Les noms de
           # FICHIERS gardent en revanche la forme de Go : ce sont deux choses differentes,
