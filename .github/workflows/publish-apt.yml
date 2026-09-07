@@ -1,0 +1,90 @@
+name: Publish to the APT repository
+
+# Deliberately decoupled from the release build: manual trigger only, never automatic.
+# Same reason as publish-winget.yml, with one security argument on top: this is the only
+# workflow that touches a production machine (axolotl) from a public repository, so the
+# less it fires on its own, the better. Transcribed from the sibling projects beammeup and
+# hublot, which publish to the same shared repository.
+#
+# The SSH key used here (`AXOLOTL_APT_KEY`) is **dedicated and restricted server-side**: a
+# forced command in `authorized_keys` limits it to publishing a package named `noisecrypt`,
+# with no shell and no file reads. That is what makes it acceptable for a public repository
+# to hold a key pointing at a production machine. **Never replace it with a general-access
+# key.** The script reads the package on standard input, checks it really is a .deb and
+# really is named noisecrypt, then hands it to reprepro.
+#
+# The apt repository is shared with justmakeq, hae, beammeup and hublot. reprepro merges
+# rather than overwrites: it already knows the other packages from its local database.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish (e.g. 0.4.0). A GitHub Release must already exist for it.'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  apt:
+    name: Publish the .deb packages on apt.breizhzion.com
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      # Refuses rather than half-running. Without this the job reaches `ssh` with an empty
+      # key and fails there, which reads as a broken key rather than as "never set up".
+      - name: Preflight
+        env:
+          KEY: ${{ secrets.AXOLOTL_APT_KEY }}
+          HOST: ${{ secrets.AXOLOTL_HOST }}
+          USER_NAME: ${{ secrets.AXOLOTL_USER }}
+        run: |
+          manquants=""
+          for n in KEY HOST USER_NAME; do
+            v="${!n:-}"
+            # A hyphen, not just emptiness: `gh secret set NAME --body -` stores the literal
+            # string "-" instead of reading stdin, which is not empty and satisfies every
+            # naive check.
+            if [ -z "$v" ] || [ "$v" = "-" ]; then manquants="$manquants $n"; fi
+          done
+          if [ -n "$manquants" ]; then
+            echo "::error title=Not configured::APT publishing is prepared but not set up. Missing or placeholder:$manquants. The key must be a dedicated one, restricted server-side by a forced command limited to the noisecrypt package."
+            exit 1
+          fi
+          echo "Configuration present."
+
+      - name: Fetch the .deb packages from the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          gh release download "v$VERSION" --repo "${{ github.repository }}" \
+            --pattern '*.deb' --dir .
+          ls -la *.deb
+
+      # One connection per package, with no scp and no remote command: the key is bound to
+      # a forced command that reads the package on standard input. Both architectures are
+      # sent, because a repository that offers only amd64 silently leaves ARM64 machines
+      # unable to install.
+      - name: Publish through the restricted key
+        env:
+          SSH_KEY: ${{ secrets.AXOLOTL_APT_KEY }}
+          HOST: ${{ secrets.AXOLOTL_HOST }}
+          USER_NAME: ${{ secrets.AXOLOTL_USER }}
+        run: |
+          set -euo pipefail
+          echo "$SSH_KEY" > /tmp/apt_key
+          chmod 600 /tmp/apt_key
+          for DEB in *.deb; do
+            echo "Publishing $DEB"
+            ssh -i /tmp/apt_key \
+              -o StrictHostKeyChecking=accept-new \
+              -o BatchMode=yes \
+              "$USER_NAME@$HOST" < "$DEB"
+          done
+          rm -f /tmp/apt_key
+          echo "Published on https://apt.breizhzion.com (apt install noisecrypt)"

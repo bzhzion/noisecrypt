@@ -11,6 +11,40 @@ patched by CI at tag time and are never committed with a real version number.
 ## [Unreleased]
 
 ### Added
+
+- **Debian packages, and publishing to the shared APT repository.** `release.yml` now
+  builds a `.deb` per architecture from the binaries it already produced, rather than
+  compiling a second time, and `publish-apt.yml` pushes them to `apt.breizhzion.com`
+  (`apt install noisecrypt`).
+  - **Versioning for Linux is delegated to the apt repository and deliberately not
+    duplicated on R2**: a reprepro pool keeps every version under its own filename and its
+    `Packages` index already pins each SHA256. A versioned copy elsewhere would be a second
+    source of truth for the same fact.
+  - Manual trigger only, and for one reason beyond the usual: this is the only workflow that
+    touches a production machine from a **public** repository.
+  - ⚠️ The SSH key is **dedicated and restricted server-side** by a forced command limited
+    to a package named `noisecrypt`, with no shell and no file reads. That is what makes a
+    key pointing at production acceptable in a public repository's secrets. **Never replace
+    it with a general-access key.**
+  - **Proved on all three refusal modes before being trusted**, transcribed from the sibling
+    project's key: an arbitrary command (`cat /etc/passwd`) runs the forced command instead;
+    an interactive shell is refused; and a package named anything other than `noisecrypt` is
+    rejected by name. The third had to be tested on the server itself, because the first
+    attempt to transfer a fake package here truncated it to 12 bytes and only re-proved the
+    "not a valid .deb" branch — a refusal for the wrong reason is not the proof you wanted.
+
+- **Publishing to `dl.breizhzion.com`**, the shared download domain: both installers under
+  fixed and immutable versioned names, the bare macOS binaries under fixed names only, and
+  a `latest.json` a website can read to show the current version without a redeploy.
+  - Linux is **not** mirrored there: the manifest points at the apt repository instead, for
+    the same reason as above.
+  - ⚠️ Through the **S3 API** rather than `wrangler r2 object`, and not out of preference:
+    per-bucket R2 permissions only work over the S3 API, the Cloudflare API requiring an
+    account-wide one. This repository is public, so a credential able to write to production
+    photo storage or the Portainer backups has no place in it. The token used is scoped to
+    the releases bucket alone, and that refusal was **verified** before it was distributed.
+
+### Added
 - **`concurrency` on the release workflow**, with `cancel-in-progress: false`.
   - **Preventive, and the comment says so**: today each run publishes to the tag of its own
     version, so an older one finishing last overwrites nothing. The guard is in place

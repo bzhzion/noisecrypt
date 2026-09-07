@@ -291,6 +291,46 @@ jobs:
           path: artefacts
           merge-multiple: true
 
+      - name: Resolve the version from the tag
+        id: version
+        run: |
+          set -euo pipefail
+          echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      # A Debian package per architecture, built from the binaries produced above rather
+      # than by a second compilation. Transcribed from the sibling project hublot, which
+      # is the closest case: no framework, one static executable and nothing else.
+      #
+      # Versioning for the .deb is delegated to the apt repository and NOT duplicated on
+      # R2: a reprepro pool keeps every version under its own filename and its `Packages`
+      # index already pins the SHA256 of each one. Publishing a versioned copy elsewhere
+      # would be a second source of truth for the same thing.
+      - name: Build the Debian packages
+        run: |
+          set -euo pipefail
+          V="${{ steps.version.outputs.version }}"
+          for ARCH in amd64 arm64; do
+            RACINE="pkgroot-$ARCH"
+            rm -rf "$RACINE"
+            mkdir -p "$RACINE/DEBIAN" "$RACINE/usr/bin"
+            cp "artefacts/noisecrypt-$V-linux-$ARCH" "$RACINE/usr/bin/noisecrypt"
+            chmod 755 "$RACINE/usr/bin/noisecrypt"
+            cat > "$RACINE/DEBIAN/control" <<EOF
+          Package: noisecrypt
+          Version: $V
+          Section: utils
+          Priority: optional
+          Architecture: $ARCH
+          Maintainer: BREIZHZION <contact@breizhzion.com>
+          Description: Encrypts any file into a container that can be carried as video
+           NoiseCrypt seals a file into a .ncry container with hybrid post-quantum
+           cryptography, and can turn that container into an ordinary video file so it
+           survives a platform that re-encodes everything it is given.
+          EOF
+            dpkg-deb --build --root-owner-group "$RACINE" "artefacts/noisecrypt_${V}_${ARCH}.deb"
+          done
+          ls -la artefacts/*.deb
+
       - name: Collect the checksums into one file
         run: |
           set -euo pipefail
@@ -305,3 +345,84 @@ jobs:
           files: artefacts/*
           generate_release_notes: true
           fail_on_unmatched_files: true
+
+      # ── Publie sur dl.breizhzion.com (bucket R2 partage breizhzion-releases) ────
+      # Shared download domain for every product in this estate except justmakeq, which
+      # keeps its own. Three URL shapes that do different jobs:
+      #   - the FIXED name, overwritten each release: website buttons and curl one-liners;
+      #   - the VERSIONED immutable copy: package managers, which pin a SHA256 per version.
+      #     An overwritten fixed name invalidates the hash of an already-accepted winget
+      #     manifest, which has happened for real (microsoft/winget-pkgs#399072);
+      #   - LATEST.JSON: what a site reads to show the current version without a redeploy.
+      #
+      # Through the S3 API rather than `wrangler r2 object`, and not out of preference:
+      # per-bucket R2 permissions only work over the S3 API, the Cloudflare API requiring
+      # an account-wide one. This repository is PUBLIC, so a credential able to write to
+      # production photo storage or the Portainer backups has no place in it. The token
+      # used here is refused on every other bucket, verified before it was distributed.
+      - name: Publish to dl.breizhzion.com
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+        run: |
+          set -euo pipefail
+          V="${{ steps.version.outputs.version }}"
+          envoyer() {
+            aws s3 cp "$1" "s3://breizhzion-releases/noisecrypt/$2"               --endpoint-url "$R2" --content-type "$3"
+          }
+          for ARCH in amd64 arm64; do
+            SRC="artefacts/NoiseCrypt-$V-$ARCH-setup.exe"
+            envoyer "$SRC" "NoiseCrypt-Setup-$ARCH.exe"      application/octet-stream
+            envoyer "$SRC" "NoiseCrypt-Setup-$ARCH-$V.exe"   application/octet-stream
+          done
+          # Les binaires nus macOS, qui n'ont pas d'installateur : nom fixe seul, personne
+          # n'epinglant leur empreinte.
+          for CIBLE in darwin-amd64 darwin-arm64; do
+            envoyer "artefacts/noisecrypt-$V-$CIBLE" "noisecrypt-$CIBLE" application/octet-stream
+          done
+          # Lire-modifier-ecrire du manifeste, protege par le `concurrency` du workflow.
+          aws s3 cp "s3://breizhzion-releases/noisecrypt/latest.json" _ancien.json             --endpoint-url "$R2" 2>/dev/null || echo '{}' > _ancien.json
+
+      - name: Build latest.json
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        shell: python
+        run: |
+          import json, os
+          base = "https://dl.breizhzion.com/noisecrypt"
+          v = os.environ["VERSION"]
+          try:
+              with open("_ancien.json") as f:
+                  existant = json.load(f)
+          except Exception:
+              existant = {}
+          f = existant.get("files", {})
+          for arch in ("amd64", "arm64"):
+              f[f"windows_{arch}"] = {
+                  "url": f"{base}/NoiseCrypt-Setup-{arch}.exe",
+                  "versioned_url": f"{base}/NoiseCrypt-Setup-{arch}-{v}.exe",
+                  "version": v,
+              }
+          for cible in ("darwin-amd64", "darwin-arm64"):
+              f[cible.replace("darwin", "macos")] = {
+                  "url": f"{base}/noisecrypt-{cible}", "version": v,
+              }
+          # Linux : le depot apt fait autorite, donc le manifeste renvoie vers lui plutot
+          # que vers une copie R2 qui serait une seconde source de verite.
+          f["linux_apt"] = {"url": "https://apt.breizhzion.com", "version": v}
+          data = {"version": v, "tag": f"v{v}", "files": f}
+          with open("latest.json", "w") as out:
+              json.dump(data, out, indent=2)
+          print(json.dumps(data, indent=2))
+
+      - name: Push latest.json
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+        run: |
+          set -euo pipefail
+          aws s3 cp latest.json "s3://breizhzion-releases/noisecrypt/latest.json"             --endpoint-url "$R2" --content-type application/json
