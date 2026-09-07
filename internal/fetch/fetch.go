@@ -203,6 +203,15 @@ func Get(ctx context.Context, ytdlp, raw, dir string, maxBytes int64) (string, e
 		// the file does not come back. `/b` is the fallback for a site that offers no
 		// separate video stream.
 		"-f", "bv*/b",
+		// Resolution first, then bitrate, said explicitly rather than left to yt-dlp's
+		// default ordering. Resolution is what decides whether the file comes back at
+		// all, since it sets how many pixels a macropixel gets. Bitrate is the tiebreak
+		// that matters after that, and the default does not apply it: measured on a real
+		// 2160p video, `bv*` alone picked an AV1 rendition at 8982k over a VP9 rendition
+		// at 17174k of the same size, so it was choosing the more compressed of two
+		// equally large options. Both decode, the wider margin is still the one to take,
+		// and an ordering that is stated cannot quietly change underneath us.
+		"-S", "res,br",
 		// No re-encode, and no remux either unless the container demands it. The decoder
 		// reads whatever FFmpeg can demux, so mp4 and webm are both fine, and forcing
 		// one would add a pass over the file for nothing.

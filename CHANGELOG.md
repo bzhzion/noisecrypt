@@ -26,6 +26,13 @@ patched by CI at tag time and are never committed with a real version number.
     lower rendition has fewer pixels to a macropixel and below the profile's tolerance the
     file does not come back. Asking for audio would also make yt-dlp merge two streams
     through FFmpeg for a track that gets discarded.
+  - `-S res,br`, resolution then bitrate, stated rather than left to yt-dlp's default
+    ordering. **Measured on a real 2160p video: `bv*` alone chose an AV1 rendition at
+    8982k over a VP9 rendition of the same 3840x2160 at 17174k**, so the default was
+    picking the more compressed of two equally large options. Both decode, but the wider
+    margin is the one to take, and an ordering that is written down cannot change
+    underneath us. Checked with `--simulate --print`, which answers the format question
+    without downloading anything.
   - Fixed output basename, so the video's title never reaches a path. A title is
     attacker-supplied text, and a fixed name removes the question rather than answering it
     with an escaping rule.
@@ -66,10 +73,16 @@ patched by CI at tag time and are never committed with a real version number.
     the one link that needs a platform**, namely that `-f bv*/b` picks the rendition a
     container survives in. That needs a video uploaded for the purpose, and this time its
     address gets recorded.
-  - ⚠️ **YouTube specifically now needs a JavaScript runtime.** With yt-dlp 2026.06.09 and
-    no runtime installed, YouTube answers `403` and yt-dlp says why. The message is passed
-    through verbatim, naming its own wiki page, so this reports itself. Other sites and
-    direct video URLs are unaffected.
+  - ⚠️ **YouTube downloads currently fail, and it is not this tool.** yt-dlp answers `403`
+    on the media URL. **Corrected twice while diagnosing, which is the useful part.** The
+    first reading was "YouTube needs a JavaScript runtime", from yt-dlp's own warning:
+    wrong, that warning only appeared because the shell it ran from exports a POSIX
+    `PATH` that a Windows executable cannot use, and deno was installed all along. The
+    second reading was "an old yt-dlp": also wrong, upgrading to 2026.07.04 changed
+    nothing. **yt-dlp fails identically with none of this tool's arguments at all**, which
+    is what settles it. Other sites and direct video URLs work. Nothing to fix here, but
+    it does mean replaying the platform validation needs the question answered on
+    YouTube's side first.
 
 ### Changed
 

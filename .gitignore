@@ -34,3 +34,7 @@ Thumbs.db
 .env
 .env.*
 !.env.example
+
+# Artefacts de validation manuelle (temoin, video encodee). Le temoin est arbitraire,
+# ce qui doit etre consigne est l URL de l upload et la methode, pas les octets.
+.validation/
