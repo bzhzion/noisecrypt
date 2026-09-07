@@ -6,7 +6,7 @@ PKG     := github.com/bzhzion/noisecrypt
 VERSION := $(shell git describe --tags --abbrev=0 --match 'v[0-9]*' 2>/dev/null | sed 's/^v//' || echo dev)
 LDFLAGS := -s -w -X $(PKG)/internal/cli.Version=$(VERSION)
 
-.PHONY: all build test vet fmt fmt-check check vuln clean hooks
+.PHONY: all build test vet fmt fmt-check check vuln clean hooks icons installer
 
 all: check build
 
@@ -39,6 +39,26 @@ hooks:
 	git config core.hooksPath .githooks
 	@echo "Hooks enabled from .githooks"
 
+# The marks, and the Windows resources that carry them. Regenerating is only needed when
+# the drawing changes: the .ico files and the .syso resources are committed so that
+# `go build ./cmd/noisecrypt` stays the single command the README promises. Needs
+# go-winres, which is fetched on demand rather than vendored.
+icons:
+	go run ./tools/icongen
+	go run github.com/tc-hib/go-winres@latest make \
+		--in winres/winres.json --out cmd/noisecrypt/rsrc --arch amd64,arm64
+
+# The Windows installer. Requires Inno Setup 6 and a binary already built for the target
+# architecture, so this is really only useful on Windows; CI does the same two steps.
+#
+#   make installer ARCH=amd64
+installer: ARCH ?= amd64
+installer:
+	CGO_ENABLED=0 GOOS=windows GOARCH=$(ARCH) go build -trimpath \
+		-ldflags "$(LDFLAGS)" -o dist/noisecrypt.exe ./cmd/noisecrypt
+	iscc /DAppVersion=$(VERSION) /DArch=$(ARCH) /DBinary=../dist/noisecrypt.exe \
+		installer/noisecrypt.iss
+
 clean:
 	rm -f $(BINARY) $(BINARY).exe
-	rm -rf dist
+	rm -rf dist installer/dist

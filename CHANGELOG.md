@@ -12,6 +12,40 @@ patched by CI at tag time and are never committed with a real version number.
 
 ### Added
 
+- **A Windows installer**, built per architecture by the release workflow and signed with
+  Azure Trusted Signing.
+  - **Per-user, and it never asks for administrator.** Everything the program needs lives
+    under the current user: associations in `HKCU\Software\Classes`, identities in the
+    user's profile. Requesting elevation it would not use is a bad habit to encourage in
+    a program whose whole subject is caution.
+  - **It does not write the registry itself.** It calls `noisecrypt shell register` after
+    copying files and `shell unregister` before removing them, so there is one
+    description of what integration means and somebody using the bare binary gets it from
+    the same code. The alternative, an installer script holding its own copy, drifts the
+    first time an entry changes.
+  - Optional `PATH` entry, added and removed in code rather than with a registry entry.
+    ⚠️ The obvious `[Registry]` entry needs `uninsdeletevalue` to clean up after itself,
+    and `uninsdeletevalue` deletes the **whole value**: uninstalling would wipe the user's
+    entire `PATH`. Verified on the real machine instead of reasoned about: 39 entries
+    before, 38 after, and the one removed was ours.
+  - **Uninstalling deliberately leaves identities alone.** They are private keys;
+    deleting them as a side effect of a routine action would destroy the only means of
+    opening every container the user has been sent. Proved by planting one, installing,
+    uninstalling, and comparing the hash. The first version of that check reported a pass
+    against a directory that had never existed, which is not a pass, it is a vacuous test.
+  - ⚠️ Trap hit again, having already been written down in this repository's own tests:
+    the right-click key is literally named `*`, and PowerShell's registry provider treats
+    it as a wildcard, so `Get-ItemProperty` reported the key missing while it was present.
+    `-LiteralPath` is the difference between verifying an installation and inventing a bug.
+  - The release workflow signs the **executables first and the installers after**: signing
+    only the installer leaves the program it drops on disk unsigned, which is the file
+    that actually runs. A verification step then reads the signatures back and fails the
+    build if any is not `Valid`, because a signature that failed to attach is invisible,
+    the file still exists and still runs and only a user's machine ever notices.
+  - When no signing credentials are configured the job emits a loud warning and a note in
+    the run summary rather than skipping quietly, for the same reason: an unsigned
+    installer is indistinguishable from a signed one until somebody's machine refuses it.
+
 - **A separate icon for `.ncry` files, and the file association that shows it.** The
   executable is a program you launch; a container is a document somebody handed you.
   Shipping one icon for both says those are the same kind of thing, and the container

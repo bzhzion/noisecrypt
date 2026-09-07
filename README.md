@@ -68,9 +68,17 @@ You do not need to know anything, and you do not need to type a command.
 
 ### 1. Get the program
 
-Download the file for your system from the
-[releases page](https://github.com/bzhzion/noisecrypt/releases). That is the whole
-installation: one file, nothing to set up, no account, no configuration.
+**On Windows**, run the installer from the
+[releases page](https://github.com/bzhzion/noisecrypt/releases). It installs for you alone
+and never asks for administrator, because nothing it does needs it. When it finishes you
+have three things you did not have before:
+
+- **Right-click any file → Encrypt with NoiseCrypt.**
+- **Double-click a `.ncry` file** and it decrypts.
+- **Right-click inside a folder → New NoiseCrypt identity.**
+
+**On macOS or Linux**, download the file for your system from the same page. That is the
+whole installation: one file, nothing to set up, no account, no configuration.
 
 ### 2. Double-click it
 
@@ -523,7 +531,18 @@ encoder settings; and reading a passphrase from a file or the environment.
 ## Install
 
 Grab a binary from the [releases page](https://github.com/bzhzion/noisecrypt/releases). One
-file, six platforms, no installer and no dependencies.
+file, six platforms, no dependencies.
+
+On Windows there is also an installer, which does the same thing plus the shell
+integration. It is **per-user and never asks for administrator**: the file associations it
+creates live in your own part of the registry, and identities live in your own profile, so
+there is no privilege to request. You can get the same integration from the bare binary
+with `noisecrypt shell register`, and remove it with `noisecrypt shell unregister`.
+
+Uninstalling removes the program, its menu entries, and its own entry in your `PATH` and
+nothing else. **It deliberately leaves your identities alone.** Those are private keys, and
+a program that deletes them as a side effect of being uninstalled would destroy the only
+means of opening every container you have ever been sent.
 
 **FFmpeg is needed for the video commands only**, which is `encode`, `decode` and `simulate`.
 Everything else, including all the encryption, needs nothing installed at all. The interface

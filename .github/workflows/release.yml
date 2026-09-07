@@ -103,9 +103,164 @@ jobs:
           path: dist/*
           retention-days: 7
 
+  installer:
+    name: Windows installer
+    needs: build
+    # Never a self-hosted runner: this repository is public, and a fork's pull request
+    # would otherwise run on our own machines.
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve the version from the tag
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_REF_TYPE:-}" = "tag" ]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            TAG=$(git describe --tags --abbrev=0 --match 'v[0-9]*' 2>/dev/null || echo "")
+            if [ -z "$TAG" ]; then
+              echo "::error::No version tag found. Tag a release before running this manually."
+              exit 1
+            fi
+            VERSION="${TAG#v}"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Collect the Windows binaries built above
+        uses: actions/download-artifact@v4
+        with:
+          pattern: noisecrypt-windows-*
+          path: incoming
+          merge-multiple: true
+
+      - name: Ensure Inno Setup is available
+        shell: pwsh
+        run: |
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            # The hosted image normally ships it. Installing when it is missing rather
+            # than assuming, so the job does not start failing the day the image changes.
+            choco install innosetup --no-progress -y
+          }
+          if (-not (Test-Path $iscc)) { throw "Inno Setup is still not present" }
+          "ISCC=$iscc" >> $env:GITHUB_ENV
+
+      - name: Lay the binaries out the way the installer expects
+        shell: pwsh
+        run: |
+          $v = "${{ steps.version.outputs.version }}"
+          # Forward slashes throughout. PowerShell, Inno Setup and Go all accept them on
+          # Windows, and it keeps this file free of backslash sequences that look like
+          # escapes to anything reading the YAML as text.
+          New-Item -ItemType Directory -Force staging/amd64, staging/arm64 | Out-Null
+          foreach ($arch in @("amd64", "arm64")) {
+            Copy-Item "incoming/noisecrypt-$v-windows-$arch.exe" "staging/$arch/noisecrypt.exe"
+          }
+
+      # Whether we can sign at all. Checked once and reported, rather than each signing
+      # step failing on its own or, worse, being skipped quietly: an unsigned installer
+      # looks exactly like a signed one until a user's machine refuses it, so the one
+      # thing this must not do is stay silent about it.
+      - name: Can we sign?
+        id: signing
+        shell: bash
+        env:
+          HAVE: ${{ secrets.AZURE_CLIENT_SECRET != '' }}
+        run: |
+          echo "enabled=$HAVE" >> "$GITHUB_OUTPUT"
+          if [ "$HAVE" = "true" ]; then
+            echo "Signing with Azure Trusted Signing." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::warning title=Unsigned release::AZURE_CLIENT_SECRET is not set on this repository, so the binaries and the installer are NOT signed. Windows SmartScreen will warn on download."
+            echo "**Unsigned release.** No Azure Trusted Signing credentials are configured, so Windows will warn users on download." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # The executables first, then the installers built around them. Signing only the
+      # installer leaves the program it drops on disk unsigned, which is the file that
+      # actually runs.
+      - name: Sign the executables
+        if: steps.signing.outputs.enabled == 'true'
+        uses: azure/trusted-signing-action@v0
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          endpoint: https://weu.codesigning.azure.net/
+          trusted-signing-account-name: breizhzion-signing
+          certificate-profile-name: breizhzion-public
+          files-folder: staging
+          files-folder-filter: exe
+          files-folder-recurse: true
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+
+      - name: Build one installer per architecture
+        shell: pwsh
+        run: |
+          $v = "${{ steps.version.outputs.version }}"
+          foreach ($arch in @("amd64", "arm64")) {
+            & $env:ISCC /Q "/DAppVersion=$v" "/DArch=$arch" `
+              "/DBinary=../staging/$arch/noisecrypt.exe" installer/noisecrypt.iss
+            if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed for $arch" }
+          }
+          Get-ChildItem installer/dist
+
+      - name: Sign the installers
+        if: steps.signing.outputs.enabled == 'true'
+        uses: azure/trusted-signing-action@v0
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          endpoint: https://weu.codesigning.azure.net/
+          trusted-signing-account-name: breizhzion-signing
+          certificate-profile-name: breizhzion-public
+          files-folder: installer/dist
+          files-folder-filter: exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+
+      # A signature that did not attach is invisible: the file still exists, still runs,
+      # and only a user's machine ever notices. Verified here while it can still fail the
+      # build.
+      - name: Verify the signatures attached
+        if: steps.signing.outputs.enabled == 'true'
+        shell: pwsh
+        run: |
+          $bad = 0
+          foreach ($f in Get-ChildItem installer/dist/*.exe, staging/*/noisecrypt.exe) {
+            $s = Get-AuthenticodeSignature $f.FullName
+            "$($f.Name): $($s.Status)"
+            if ($s.Status -ne "Valid") { $bad++ }
+          }
+          if ($bad -gt 0) { throw "$bad file(s) are not validly signed" }
+
+      - name: Checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd installer/dist
+          for f in *.exe; do sha256sum "$f" > "$f.sha256"; done
+
+      - name: Upload artefact
+        uses: actions/upload-artifact@v4
+        with:
+          name: noisecrypt-windows-installer
+          path: installer/dist/*
+          retention-days: 7
+
   publish:
     name: Publish the release
-    needs: build
+    needs: [build, installer]
     runs-on: ubuntu-latest
     if: github.ref_type == 'tag'
     permissions:
