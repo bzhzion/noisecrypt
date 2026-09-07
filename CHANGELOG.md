@@ -12,6 +12,64 @@ patched by CI at tag time and are never committed with a real version number.
 
 ### Added
 
+- **The interface manages this machine's identity**, which is what it could not do before.
+  - The Identities tab now **states** what exists: the path, whether the private key is
+    protected, and the fingerprint. A page that showed an empty field let the user conclude
+    they had nothing, while the command line was already using the identity in their
+    profile whenever they said nothing. The behaviour was correct and invisible.
+  - Above every field that accepts a private identity, a line says what will be used:
+    leave it empty and this machine's identity serves, fill it only to use another one
+    **for this operation**, and nothing there replaces the machine's own.
+  - **Two buttons, deliberately distinct.** `Install on disk` generates an identity **and
+    writes it** where the machine looks; `Generate` hands one to the page and writes
+    nothing, for a second identity or one that lives on a USB stick. One button called
+    "Generate" that wrote nothing was the original defect: the user believed they had
+    equipped their machine and the directory stayed empty. **A name that does not say
+    whether something was written cannot be understood.**
+  - The confirmation **names the exact path** before anything is written. "We are going to
+    put a key on disk" without saying where is precisely the information whose absence
+    produced the question "it created an identity, but where?"
+  - Replacing an existing identity needs a second, explicit confirmation, and the route
+    refuses without a `force` flag: it destroys access to everything encrypted to the old
+    one, with no recovery. Both refusal paths verified, plus the passphrase floor.
+  - This reverses a commented choice: `handleKeygen` said the process "never writes a key to
+    disk on its own initiative". The principle is kept where it matters — this is a named
+    action, distinct from `Generate`, behind a confirmation that gives the path, on a
+    loopback-only server. An interface that cannot do what one comes to it for sends the
+    user elsewhere.
+
+### Fixed
+
+- The right-click entry on a folder **now creates the identity in that folder**. It was
+  called "New NoiseCrypt identity" and ran `keygen` with no argument, so it wrote to the
+  default location and **ignored the folder entirely**. A context menu whose effect does not
+  depend on its context.
+  - Labelled "Create a NoiseCrypt identity **here**", and the resulting identity states
+    plainly that it is **not** the one this machine uses, with the flag needed to use it.
+    Without that, someone creating one there believes they are equipped while `open` keeps
+    looking in the profile: an inert identity that looks installed, which is worse than none.
+  - ⚠️ `%V` and not `%1`. On a verb attached to `Directory\Background\shell`, `%1` is
+    **empty**, so the program would receive a truncated path and write the identity
+    somewhere unintended with nothing reporting it. The two tokens look alike enough that
+    a human re-read does not catch it, so a test asserts both the presence of `%V` and the
+    absence of `%1`.
+  - The registration summary still advertised the old label. A summary describing a stale
+    state is more misleading than silence.
+
+- An announcement in the interface **did not refresh**. The first version set a flag and
+  skipped on later calls, so after installing an identity those lines still claimed there
+  was none. **An announcement that does not refresh is worse than no announcement**, since
+  it describes a bygone state with the authority of the present.
+
+- `MinPassphraseLength` moved into `crypt`. The interface enforces the same floor and could
+  not read a constant living in `cli`, since `cli` imports `webui`. Two copies of a policy
+  number is one copy too many.
+
+- A path in a message was printed with `%q`, which escapes backslashes and produced a
+  Windows path as `C:\Users\...` that nobody could copy.
+
+### Added
+
 - **`noisecrypt identity`**, which shows what is already on this machine: the public
   identity, its fingerprint, and whether the private key is passphrase-protected.
   - This closes the worst defect found so far. The public identity was printed exactly

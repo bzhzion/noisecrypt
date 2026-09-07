@@ -436,3 +436,20 @@ func fillRandom(slices ...[]byte) error {
 	}
 	return nil
 }
+
+// MinPassphraseLength is the floor enforced when sealing.
+//
+// The Argon2id cost does not save a short passphrase. Three passes over 128 MiB makes
+// each guess expensive, but "a" is one guess: the work factor multiplies the cost of
+// searching a keyspace, and a keyspace of a few hundred candidates stays trivial no
+// matter what it is multiplied by. A tool that advertises post-quantum key exchange
+// and then accepts a one-character passphrase without a word is not being honest
+// about what protects the data.
+//
+// The floor applies when sealing only. Opening never enforces it, because a container
+// made elsewhere, or made before this check existed, must still open.
+//
+// Lives here rather than in the command line package because the interface enforces the
+// same floor, and cli imports webui, so a constant in cli is one the interface cannot
+// read. Two copies of a policy number is one copy too many.
+const MinPassphraseLength = 8

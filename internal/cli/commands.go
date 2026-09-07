@@ -112,6 +112,19 @@ func runKeygen(env *Env, args []string) error {
 		fmt.Fprintf(env.Stdout, "Private identity stored at %s, UNPROTECTED: anyone who reads that file has it.\n", path)
 	}
 	fmt.Fprintln(env.Stdout, "Back that file up. Lose it and everything encrypted to it is gone.")
+
+	// Dire qu'une identite creee ailleurs n'est PAS celle que le programme prendra tout
+	// seul. Sans ca, quelqu'un qui la cree depuis le menu contextuel d'un dossier croit
+	// etre equipe, et `open` continue de chercher celle du profil : une identite inerte
+	// qui a l'air installee, ce qui est plus trompeur que pas d'identite du tout.
+	if defaut, err := keystore.DefaultIdentityPath(); err == nil && path != defaut {
+		fmt.Fprintln(env.Stdout, "\nThis is NOT the identity this machine uses by default.")
+		fmt.Fprintf(env.Stdout, "That one lives at %s.\n", defaut)
+		// %s entre guillemets et non %q : %q echappe les antislashes, donc affiche un
+		// chemin Windows en C:\\Users\\... que personne ne peut recopier tel quel.
+		fmt.Fprintf(env.Stdout, "To use this one, pass -identity \"%s\", or move it there.\n", path)
+	}
+
 	fmt.Fprintf(env.Stdout, "\nPublic identity written to %s. This is the half you hand out.\n", pub)
 	fmt.Fprintf(env.Stdout, "%s\n", id.Public.String())
 	fmt.Fprintf(env.Stdout, "\nFingerprint: %s\n", id.Public.Short())

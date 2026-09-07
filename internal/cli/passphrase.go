@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"github.com/bzhzion/noisecrypt/internal/crypt"
 	"os"
 	"strings"
 
@@ -53,18 +54,9 @@ func (s *passphraseSource) registerAs(fs interface {
 // ErrNoPassphrase is returned when a passphrase is required and none could be read.
 var ErrNoPassphrase = errors.New("no passphrase supplied")
 
-// MinPassphraseLength is the floor enforced when sealing.
-//
-// The Argon2id cost does not save a short passphrase. Three passes over 128 MiB makes
-// each guess expensive, but "a" is one guess: the work factor multiplies the cost of
-// searching a keyspace, and a keyspace of a few hundred candidates stays trivial no
-// matter what it is multiplied by. A tool that advertises post-quantum key exchange
-// and then accepts a one-character passphrase without a word is not being honest
-// about what protects the data.
-//
-// The floor applies when sealing only. Opening never enforces it, because a container
-// made elsewhere, or made before this check existed, must still open.
-const MinPassphraseLength = 8
+// MinPassphraseLength, deplacee dans crypt : l'interface applique le meme plancher et
+// ne peut pas lire une constante de ce paquet, cli important webui.
+const MinPassphraseLength = crypt.MinPassphraseLength
 
 // fromHuman says whether resolve would prompt somebody who can actually answer.
 //

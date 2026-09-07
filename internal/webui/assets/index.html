@@ -226,12 +226,42 @@
 </section>
 
 <section id="panel-keys" role="tabpanel" aria-labelledby="tab-keys" hidden>
-  <h2 class="step" data-index="05">Generate an identity</h2>
+  <h2 class="step" data-index="05">This machine's identity</h2>
+
+  <!-- Etat annonce plutot que devine. Une page qui presente un champ vide laisse
+       l'utilisateur supposer qu'il n'a rien, alors qu'il a peut-etre deja une identite
+       parfaitement utilisable. L'empreinte se lit dans le fichier public, qui n'est pas
+       chiffre, donc tout ceci s'affiche sans reclamer de phrase de passe. -->
+  <div id="id-etat" class="idbox">
+    <p class="hint">Checking…</p>
+  </div>
+
+  <label for="id-pass">Passphrase to protect it</label>
+  <input type="password" id="id-pass" autocomplete="new-password">
+  <label class="inline">
+    <input type="checkbox" id="id-nopass" value="1">
+    Store it unprotected. Anyone who reads the file then has it.
+  </label>
+
+  <div class="keyactions">
+    <button id="btn-install" type="button" class="btn btn-primary">Install on disk</button>
+  </div>
+  <p class="hint">
+    Generates a new identity <b>and writes it</b> where this machine looks for one, so
+    everything you do here uses it without being told. The exact path is shown before
+    anything is written.
+  </p>
+  <output id="out-install" role="status" aria-live="polite"></output>
+
+  <h2 class="step" data-index="06">Just give me a key</h2>
   <p class="hint">
     Four keys: two for encryption and two for signing, one classical and one
     post-quantum in each pair. Break one and you still need the other.
+    <b>Nothing is written to disk</b>: the identity is handed to this page and to nowhere
+    else, so it is yours to save or lose. Use this for a second identity, or for one that
+    lives on a USB stick.
   </p>
-  <button id="btn-keygen" type="button" class="btn btn-primary panel-action">Generate</button>
+  <button id="btn-keygen" type="button" class="btn btn-secondary panel-action">Generate</button>
   <output id="out-keys" role="status" aria-live="polite"></output>
 </section>
 

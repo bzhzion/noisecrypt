@@ -149,3 +149,11 @@ func WriteIdentityFile(path, contents string, force bool) error {
 	// before, since the permissions have to survive the write.
 	return restrictToOwner(path)
 }
+
+// IdentityBaseName is the file name an identity gets when it is created somewhere the
+// user chose, rather than at the default location.
+//
+// Exported so the shell registration can build its command without restating the
+// convention: a menu entry that hard-coded "identity.ncrykey" would keep writing the old
+// name the day the extension changes, and nothing would report the divergence.
+func IdentityBaseName() string { return IdentityBase + PrivateExt }

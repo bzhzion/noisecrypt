@@ -34,6 +34,10 @@ func (s *Server) routes() {
 	// Lecture seule : dit ce qui existe deja sur la machine, pour que l'interface
 	// annonce l'identite utilisee au lieu de presenter un champ vide.
 	s.mux.HandleFunc("GET /api/identity", s.handleIdentity)
+	// Ecrit, contrairement a /api/keygen. Action nommee et distincte, precedee d'une
+	// confirmation qui donne le chemin exact : c'est ce qui la distingue d'un serveur
+	// qui poserait une cle privee sur le disque de sa propre initiative.
+	s.mux.HandleFunc("POST /api/identity/install", s.handleInstallIdentity)
 	s.mux.HandleFunc("POST /api/seal", s.handleSeal)
 	s.mux.HandleFunc("POST /api/open", s.handleOpen)
 	s.videoRoutes()

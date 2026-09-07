@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/bzhzion/noisecrypt/internal/keystore"
 	"golang.org/x/sys/windows/registry"
 )
 
@@ -102,8 +103,20 @@ func shellRegister(env *Env) error {
 		},
 		{
 			identityKey(),
-			"New NoiseCrypt identity",
-			quoted + " -pause keygen",
+			// « ici » dans le libelle, et ce mot est le correctif.
+			//
+			// L'entree s'appelait « New NoiseCrypt identity » et lancait `keygen` sans
+			// argument, donc ecrivait a l'emplacement par defaut en ignorant
+			// completement le dossier ou l'on venait de cliquer. Le geste designe un
+			// endroit et le programme allait ailleurs : la premiere personne a s'en
+			// servir a demande « ca m'a cree une identite, mais ou ? », ce qui est
+			// exactement la question que provoque un menu contextuel dont l'effet ne
+			// depend pas de son contexte.
+			"Create a NoiseCrypt identity here",
+			// %V et non %1 : pour un verbe pose sur Directory\Background\shell, %1 est
+			// vide et seul %V porte le dossier. Les deux se ressemblent assez pour
+			// qu'une confusion produise un chemin vide sans rien signaler.
+			quoted + ` -pause keygen -out "%V\` + keystore.IdentityBaseName() + `"`,
 			quoted + ",0",
 		},
 	}
@@ -181,7 +194,7 @@ func shellRegister(env *Env) error {
 	fmt.Fprintf(env.Stdout, "Shell integration registered, pointing at:\n  %s\n", exe)
 	fmt.Fprintln(env.Stdout, "\n  Right-click any file      Encrypt with NoiseCrypt")
 	fmt.Fprintln(env.Stdout, "  Double-click a .ncry      decrypts it")
-	fmt.Fprintln(env.Stdout, "  Right-click in a folder   New NoiseCrypt identity")
+	fmt.Fprintln(env.Stdout, "  Right-click in a folder   creates an identity in THAT folder")
 	// The one real weakness of registering without an installer, said rather than
 	// discovered: the path above is absolute, so it stops working silently if the
 	// binary moves.

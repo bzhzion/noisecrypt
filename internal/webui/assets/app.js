@@ -600,3 +600,151 @@ document.getElementById('form-decode').addEventListener('submit', async (event) 
     // The table is informational; failing to fill it is not worth an alarm.
   }
 })();
+
+// ── L'identite de ce poste, annoncee partout ou elle sert ─────────────────────────
+//
+// Le defaut que ceci corrige : les champs « votre identite privee » etaient vides, donc
+// l'interface ne disait jamais qu'il y avait deja une identite sur la machine ni laquelle.
+// L'utilisateur en deduisait qu'il n'avait rien, ou ne savait pas ce qui serait utilise.
+// Or la ligne de commande, elle, prend l'identite du profil des qu'on ne precise rien : le
+// comportement etait donc correct et invisible.
+//
+// L'empreinte vient du fichier public, qui n'est PAS chiffre, donc tout ceci s'affiche
+// sans reclamer de phrase de passe. C'est ce qui rend l'annonce gratuite.
+async function chargerIdentite() {
+  const boite = document.getElementById('id-etat');
+  let e;
+  try {
+    e = await (await fetch('api/identity')).json();
+  } catch (err) {
+    if (boite) boite.innerHTML = '<p class="hint">Could not read the identity state.</p>';
+    return null;
+  }
+
+  if (boite) {
+    if (!e.exists) {
+      boite.innerHTML =
+        '<p><b>No identity on this machine yet.</b></p>' +
+        '<p class="hint">Create one below. You need it to receive files encrypted for you ' +
+        'specifically, and to sign what you produce. Encrypting with a passphrase works ' +
+        'without one.</p>';
+    } else {
+      const empreinte = e.fingerprint
+        ? '<p>Fingerprint <code>' + e.fingerprint + '</code></p>' +
+          '<p class="hint">Read that out to whoever sent you theirs, over some other ' +
+          'channel than the one the identity travelled on. That is the whole point of it.</p>'
+        : '<p class="hint">Its public half is missing. Run <code>noisecrypt identity</code> ' +
+          'once and it will be written back from the private key.</p>';
+      boite.innerHTML =
+        '<p><b>This machine has an identity, and it is the one used by default.</b></p>' +
+        '<p class="hint">Private key <code>' + e.path + '</code>' +
+        (e.locked ? ', protected by a passphrase.' :
+          '. <b>Not protected</b>: anyone who reads that file has it.') + '</p>' +
+        (e.publicPath ? '<p class="hint">Public half <code>' + e.publicPath + '</code></p>' : '') +
+        empreinte;
+    }
+  }
+
+  // La meme information la ou elle change une decision : au-dessus des champs qui
+  // acceptent une identite privee. Dire « c'est celle du poste qui sert » et offrir d'en
+  // designer une autre POUR CETTE FOIS, sans jamais toucher a celle du poste.
+  for (const id of ['open-key', 'dec-key', 'seal-sign', 'enc-sign']) {
+    const champ = document.getElementById(id);
+    if (!champ) continue;
+
+    // ⚠️ Reutiliser la note existante plutot que de sauter quand elle est deja la.
+    // La premiere version posait un drapeau et passait son tour aux appels suivants :
+    // apres avoir installe une identite depuis l'onglet Identites, ces lignes
+    // continuaient donc d'affirmer « il n'y a pas d'identite sur cette machine ». Une
+    // annonce qui ne se rafraichit pas est pire qu'une absence d'annonce, puisqu'elle
+    // decrit un etat revolu avec l'autorite du present.
+    const signe = id.endsWith('sign');
+    let note = champ.previousElementSibling;
+    if (!note || !note.classList.contains('id-annonce')) {
+      note = document.createElement('p');
+      note.className = 'hint id-annonce';
+      champ.insertAdjacentElement('beforebegin', note);
+    }
+    if (e.exists) {
+      note.innerHTML = 'Leave this empty and ' +
+        (signe ? 'the signature uses ' : 'opening uses ') +
+        'this machine’s identity' +
+        (e.fingerprint ? ' (<code>' + e.fingerprint + '</code>)' : '') +
+        '. Fill it only to use a different one, just for this operation. Nothing here ' +
+        'changes or replaces the identity on this machine.';
+    } else {
+      note.innerHTML = 'There is no identity on this machine, so this field is the only ' +
+        'way to supply one. See the Identities tab.';
+    }
+  }
+  return e;
+}
+
+// Appelee au chargement, puis apres chaque generation : sans ce second appel la page
+// continuerait d'annoncer « aucune identite » juste apres en avoir cree une, ce qui est
+// exactement le genre d'incoherence qui fait douter de ce que l'outil a reellement fait.
+chargerIdentite();
+document.getElementById('btn-keygen')?.addEventListener('click', () => {
+  setTimeout(chargerIdentite, 400);
+});
+
+// ── Installer l'identite du poste ────────────────────────────────────────────────
+//
+// Deux boutons volontairement distincts, et la distinction est le point :
+//
+//   Generate         fabrique une identite et la remet a cette page. Rien sur le disque.
+//   Install on disk  fabrique une identite ET l'ecrit ou la machine la cherchera.
+//
+// Confondre les deux etait le defaut d'origine : un seul bouton nomme « Generate » qui
+// n'ecrivait rien, donc l'utilisateur croyait avoir equipe sa machine et le dossier restait
+// vide. Un nom qui ne dit pas si quelque chose a ete ecrit ne peut pas etre compris.
+document.getElementById('btn-install')?.addEventListener('click', async () => {
+  const sortie = document.getElementById('out-install');
+  const phrase = document.getElementById('id-pass');
+  const sans = document.getElementById('id-nopass');
+
+  const e = await (await fetch('api/identity')).json().catch(() => ({}));
+  const ou = e.path || 'the default location';
+
+  // L'alerte nomme le CHEMIN EXACT avant d'ecrire. « on va mettre une cle sur le disque »
+  // sans dire ou est precisement l'information qui manquait et qui a fait poser la question
+  // « ca m'a cree une identite, mais ou ? ».
+  let question = 'A new identity will be generated and written to:\n\n' + ou +
+    '\n\nIt becomes the identity this machine uses. Continue?';
+  if (e.exists) {
+    question = 'An identity ALREADY EXISTS at:\n\n' + ou +
+      '\n\nReplacing it DESTROYS access to everything encrypted to it. ' +
+      'This cannot be undone and there is no recovery.\n\n' +
+      (e.fingerprint ? 'The one you would lose has fingerprint ' + e.fingerprint + '.\n\n' : '') +
+      'Replace it?';
+  }
+  if (!confirm(question)) {
+    sortie.textContent = 'Nothing written.';
+    return;
+  }
+
+  const corps = new FormData();
+  if (sans?.checked) {
+    corps.set('noPassphrase', '1');
+  } else {
+    corps.set('passphrase', phrase?.value || '');
+  }
+  if (e.exists) corps.set('force', '1');
+
+  sortie.textContent = 'Writing…';
+  try {
+    const r = await fetch('api/identity/install', { method: 'POST', body: corps });
+    const t = await r.text();
+    if (!r.ok) { sortie.textContent = t.trim(); return; }
+    const d = JSON.parse(t);
+    sortie.innerHTML = 'Written to <code>' + d.path + '</code>' +
+      (d.protected ? ', protected by your passphrase.' :
+        '. <b>Not protected.</b>') +
+      '<br>Fingerprint <code>' + d.fingerprint + '</code>' +
+      '<br>Back that file up. Lose it and everything encrypted to it is gone.';
+    if (phrase) phrase.value = '';
+    chargerIdentite();
+  } catch (err) {
+    sortie.textContent = String(err);
+  }
+});

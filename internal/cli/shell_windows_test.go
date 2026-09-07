@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/bzhzion/noisecrypt/internal/keystore"
 	"golang.org/x/sys/windows/registry"
 )
 
@@ -51,8 +52,11 @@ func TestShellRegisterWritesEveryEntry(t *testing.T) {
 		{encryptKey() + `\command`, ` -pause seal -in "%1"`},
 		// Double-click a .ncry.
 		{decryptKey() + `\shell\open\command`, ` -pause open -in "%1"`},
-		// Right-click the background of a folder.
-		{identityKey() + `\command`, ` -pause keygen`},
+		// Right-click the background of a folder. L'identite doit etre creee DANS ce
+		// dossier : l'entree lancait `keygen` sans argument, donc ecrivait a
+		// l'emplacement par defaut en ignorant le dossier ou l'on venait de cliquer.
+		// Un menu contextuel dont l'effet ne depend pas de son contexte.
+		{identityKey() + `\command`, ` -pause keygen -out "%V\` + keystore.IdentityBaseName() + `"`},
 	}
 	for _, c := range cases {
 		k, err := registry.OpenKey(registry.CURRENT_USER, c.key, registry.QUERY_VALUE)
@@ -97,6 +101,22 @@ func TestShellRegisterWritesEveryEntry(t *testing.T) {
 		if strings.HasSuffix(got, ",0") {
 			t.Error("DefaultIcon points at index 0, which is the application tile: " +
 				"containers would look like copies of the program")
+		}
+	}
+
+	// ⚠️ %V et non %1, et cette assertion vaut plus que le suffixe teste ci-dessus.
+	// Pour un verbe pose sur Directory\Background\shell, %1 est VIDE : le programme
+	// recevrait alors un chemin tronque et ecrirait l'identite n'importe ou, sans que
+	// rien ne le signale. Les deux jetons se ressemblent assez pour qu'une relecture
+	// humaine ne fasse pas la difference.
+	if k, err := registry.OpenKey(registry.CURRENT_USER, identityKey()+`\command`, registry.QUERY_VALUE); err == nil {
+		commande, _, _ := k.GetStringValue("")
+		k.Close()
+		if !strings.Contains(commande, `%V`) {
+			t.Errorf("l'entree de dossier ne transmet pas le dossier : %q", commande)
+		}
+		if strings.Contains(commande, `%1`) {
+			t.Errorf("l'entree de dossier utilise %%1, qui est vide sur un fond de dossier : %q", commande)
 		}
 	}
 
