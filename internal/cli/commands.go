@@ -137,8 +137,7 @@ func runKeygen(env *Env, args []string) error {
 // l'identite sans protection. Ce n'est pas un echec silencieux : c'est une decision prise
 // explicitement, et le seul moyen de la prendre quand on ne peut pas passer de flag.
 func demanderPhrase(env *Env, pass *passphraseSource) ([]byte, error) {
-	const essais = 3
-	for i := 1; ; i++ {
+	for {
 		p, err := pass.resolve(env, "Passphrase to protect this identity: ")
 		if err == nil {
 			return p, nil
@@ -154,16 +153,23 @@ func demanderPhrase(env *Env, pass *passphraseSource) ([]byte, error) {
 			return nil, err
 		}
 
+		// Pas de compteur d'essais. Un plafond de trois tentatives finit par refuser
+		// alors que la personne est devant et veut manifestement une identite : c'est
+		// une limite qui ne protege de rien et qui frustre. La sortie est donc une
+		// QUESTION plutot qu'un epuisement, et repondre non ramene simplement a la
+		// saisie. C'est l'utilisateur qui decide quand arreter, pas un decompte.
 		fmt.Fprintf(env.Stderr, "\n%v\n", err)
-		if i >= essais {
-			fmt.Fprintln(env.Stdout, "\nStill no passphrase after three tries.")
-			if oui(env, "Create the identity WITHOUT any protection? Anyone who reads the "+
-				"file then has it. [y/N] ") {
-				return nil, nil
-			}
+		reponse, ok := oui(env, "Create the identity WITHOUT any protection? Anyone who "+
+			"reads the file then has it. [y/N] ")
+		if !ok {
+			// Personne au clavier, ou entree fermee. Boucler ici serait une attente
+			// infinie sans rien pour l'interrompre.
 			return nil, errors.New("no identity created")
 		}
-		fmt.Fprintf(env.Stdout, "Try again (%d of %d).\n", i+1, essais)
+		if reponse {
+			return nil, nil
+		}
+		fmt.Fprintln(env.Stdout, "\nRight, a passphrase then.")
 	}
 }
 
@@ -172,21 +178,25 @@ func demanderPhrase(env *Env, pass *passphraseSource) ([]byte, error) {
 // Une question plutot qu'un flag, parce qu'un flag ne se tape pas depuis un menu
 // contextuel. Tout ce qui n'est pas un oui franc vaut non : le defaut d'une question dont
 // la mauvaise reponse est irreversible doit etre le refus.
-func oui(env *Env, question string) bool {
+//
+// Le second retour distingue « la reponse est non » de « personne n'a pu repondre », et
+// cette distinction n'est pas cosmetique : l'appelant boucle sur un non, donc confondre
+// les deux transformerait une entree fermee en attente infinie que rien ne vient
+// interrompre.
+func oui(env *Env, question string) (reponse bool, lu bool) {
 	if env.Stdin == nil {
-		return false
+		return false, false
 	}
 	fmt.Fprint(env.Stdout, question)
-	r := bufio.NewReader(env.Stdin)
-	ligne, err := r.ReadString('\n')
+	ligne, err := bufio.NewReader(env.Stdin).ReadString('\n')
 	if err != nil && ligne == "" {
-		return false
+		return false, false
 	}
 	switch strings.ToLower(strings.TrimSpace(ligne)) {
 	case "y", "yes", "o", "oui":
-		return true
+		return true, true
 	}
-	return false
+	return false, true
 }
 
 // runIdentity shows what is already on this machine.

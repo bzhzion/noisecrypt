@@ -45,8 +45,17 @@ patched by CI at tag time and are never committed with a real version number.
   identity with no passphrase answered "pass -no-passphrase to store the identity
   unprotected", which is sound advice at a shell and an **impossible instruction** for
   somebody who just clicked "New identity" in a context menu: there is nowhere to type it.
-  - When a human is watching, it now **asks again**, three times, then offers to continue
-    without protection as a **question** rather than a flag.
+  - When a human is watching, an empty passphrase now asks **once**: "create it without
+    any protection?" Answer yes and it is created unprotected; answer no and it simply asks
+    for a passphrase again.
+  - **No attempt counter, deliberately.** A three-try ceiling ends up refusing somebody who
+    is standing right there and plainly wants an identity: it protects against nothing and
+    only frustrates. The exit is a question, not an exhaustion, and the user decides when
+    to stop rather than a countdown.
+  - The question distinguishes "the answer is no" from "nobody could answer". Not
+    cosmetic: the caller loops on a no, so conflating the two would turn a closed input
+    into an infinite wait with nothing to interrupt it. Verified by running with input
+    closed, which now exits in 0.2 s.
   - The guard on that loop had to be measured, not reasoned: checking only the passphrase
     flags was not enough. With standard input on a pipe, the loop printed "standard input
     is not a terminal" **three times in a row** before giving up. No flag was set and the
