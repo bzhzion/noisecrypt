@@ -12,6 +12,33 @@ patched by CI at tag time and are never committed with a real version number.
 
 ### Added
 
+- **An icon, and Windows metadata.** The executable had neither, so Explorer drew it as a
+  generic console program and the context menu entries added above had nothing to show.
+  - **The mark is drawn in code**, by `tools/icongen`, not in an editor. It is an N built
+    out of macro cells with its diagonal in the interface's accent colour: the same grid
+    the codec draws, so the logo is the product rather than a picture of it. It also means
+    the mark regenerates at any size with no design tool, no asset pipeline and no
+    `node_modules`, and `image/png` in the standard library writes the payloads.
+  - Three variants were drawn and compared **at 16 pixels as well as 256**, because the
+    places an icon matters most are a taskbar and a context menu. The literal frame, grid
+    inside its black border and quiet zone, was the most faithful and collapsed into a
+    white smudge at 16; the bare grid read as generic pixel art. The lettered one survives
+    small and is recognisable as this product, so it won.
+  - The `.syso` resources are **committed** rather than generated at build time, so
+    `go build ./cmd/noisecrypt` stays the one command the README promises.
+  - The version in that resource says `dev`, matching what a locally built binary reports,
+    because a number frozen into a committed file would drift from the tags where the
+    version actually lives. CI replaces it at release time.
+  - ⚠️ **`FileVersion` and `ProductVersion` are mandatory in the string block.** Omitting
+    them makes Windows discard the entire version resource in silence: no error, no
+    warning, every field simply blank. Two wrong diagnoses came first, a zero version and
+    a shell caching the metadata per path, and both were disproved before the real cause
+    was found by diffing against the tool's own template.
+  - ⚠️ And the check that nearly passed for the wrong reason:
+    `ExtractAssociatedIcon` returns the **default Windows executable icon** when a file
+    has none, so "an icon came back" proves nothing. The icon had to be extracted and
+    looked at.
+
 - **Right-click to encrypt, double-click to decrypt**, on Windows, plus a right-click on
   the background of a folder for **New NoiseCrypt identity**. Registered by
   `noisecrypt shell register`, removed by `shell unregister`, reported by `shell status`.
