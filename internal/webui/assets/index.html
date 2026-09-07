@@ -167,6 +167,17 @@
     <label for="dec-file">Video</label>
     <input type="file" id="dec-file" name="file" accept="video/*" required>
 
+    <!-- Hidden until the machine is known to have yt-dlp, and replaced by a sentence
+         when it does not. An address field that fails on submission would be worse than
+         no field: the user has by then chosen a profile and typed a passphrase. -->
+    <div id="dec-url-box" hidden>
+      <label for="dec-url">Or the address of the video, and it will be downloaded</label>
+      <input type="url" id="dec-url" name="url" inputmode="url" spellcheck="false"
+             placeholder="https://...">
+      <p class="hint" id="dec-url-hint"></p>
+    </div>
+    <p class="hint" id="dec-url-absent" hidden></p>
+
     <label for="dec-profile">Channel it was encoded with</label>
     <select id="dec-profile" name="profile"></select>
 

@@ -288,8 +288,13 @@ label.inline {
   display: none !important;
 }
 
+/* Enumerated by type rather than as a bare `input`, so that a checkbox is not stretched
+   across the column. The cost is that a new type has to be added here, and the failure
+   is silent and cosmetic: the field works, it is simply half the width of every other
+   one, which is how the address field first shipped. */
 input[type="file"],
 input[type="password"],
+input[type="url"],
 select,
 textarea {
   display: block;

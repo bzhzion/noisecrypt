@@ -3,6 +3,7 @@ package webui
 import (
 	"embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -127,8 +128,13 @@ func (s *Server) handleKeygen(w http.ResponseWriter, r *http.Request) {
 
 // sealRequest is the multipart form the page submits.
 type sealRequest struct {
-	data       []byte
-	name       string
+	data []byte
+	name string
+
+	// url is set instead of data when the video is to be downloaded rather than
+	// uploaded. Only the decoding route accepts it: everything else needs the bytes.
+	url string
+
 	passphrase string
 	to         string
 	signWith   string
@@ -162,26 +168,61 @@ func (r sealRequest) privateIdentity() (*crypt.PrivateIdentity, error) {
 }
 
 func readSealRequest(r *http.Request) (sealRequest, error) {
+	return readRequest(r, true)
+}
+
+// readDecodeRequest reads a request that may name a URL instead of carrying a file.
+//
+// A separate entry point rather than a flag threaded through every caller, because
+// "the file is optional" is true of exactly one route and letting it be true of the
+// sealing routes would mean encrypting an empty file on a missing form field.
+func readDecodeRequest(r *http.Request) (sealRequest, error) {
+	return readRequest(r, false)
+}
+
+func readRequest(r *http.Request, fileRequired bool) (sealRequest, error) {
 	if err := r.ParseMultipartForm(32 << 20); err != nil {
 		return sealRequest{}, fmt.Errorf("reading the form: %w", err)
 	}
-	file, header, err := r.FormFile("file")
-	if err != nil {
-		return sealRequest{}, fmt.Errorf("no file submitted: %w", err)
-	}
-	defer file.Close()
 
-	data, err := io.ReadAll(io.LimitReader(file, maxUpload+1))
-	if err != nil {
-		return sealRequest{}, fmt.Errorf("reading the file: %w", err)
-	}
-	if len(data) > maxUpload {
-		return sealRequest{}, fmt.Errorf("file exceeds the %d MiB limit of the interface", maxUpload>>20)
+	source := strings.TrimSpace(r.FormValue("url"))
+	var data []byte
+	var name string
+
+	// An empty `<input type="file">` still submits a part, with `filename=""` and no
+	// bytes, so a request that named an address and chose no file could arrive looking
+	// like one that named both. It does not: net/http treats a part whose filename is
+	// empty as an ordinary form value, so FormFile answers ErrMissingFile. Measured
+	// rather than assumed, on both the shape a browser sends and the shape
+	// mime/multipart writes, because a guard was written here for a case that turned out
+	// not to exist and a guard that cannot fire is worse than none: it looks like the
+	// reason something works. TestDecodeSourceIsExclusiveAndChecked pins the behaviour.
+	file, header, err := r.FormFile("file")
+	switch {
+	case err == nil:
+		defer file.Close()
+		data, err = io.ReadAll(io.LimitReader(file, maxUpload+1))
+		if err != nil {
+			return sealRequest{}, fmt.Errorf("reading the file: %w", err)
+		}
+		if len(data) > maxUpload {
+			return sealRequest{}, fmt.Errorf("file exceeds the %d MiB limit of the interface", maxUpload>>20)
+		}
+		name = filepath.Base(header.Filename)
+		// A form carrying both is a mistake worth naming rather than resolving by
+		// precedence. Whichever one was silently ignored, the user waits for work on
+		// the other and is told nothing.
+		if source != "" {
+			return sealRequest{}, errors.New("give a file or an address, not both")
+		}
+	case fileRequired || source == "":
+		return sealRequest{}, fmt.Errorf("no file submitted: %w", err)
 	}
 
 	return sealRequest{
 		data:       data,
-		name:       filepath.Base(header.Filename),
+		name:       name,
+		url:        source,
 		passphrase: r.FormValue("passphrase"),
 		to:         strings.TrimSpace(r.FormValue("to")),
 		signWith:   strings.TrimSpace(r.FormValue("sign")),

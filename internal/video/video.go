@@ -33,6 +33,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"github.com/bzhzion/noisecrypt/internal/tools"
 )
 
 var (
@@ -82,13 +84,19 @@ func Find() (Tools, error) {
 }
 
 func locate(name string) (string, error) {
-	if runtime.GOOS == "windows" {
-		name += ".exe"
+	found, err := tools.Locate(name, ffmpegPlaces())
+	if err != nil {
+		var missing *tools.NotFoundError
+		if errors.As(err, &missing) {
+			return "", fmt.Errorf("%w: looked in PATH and %s", ErrNotInstalled, missing.Where)
+		}
+		return "", err
 	}
-	if p, err := exec.LookPath(name); err == nil {
-		return p, nil
-	}
+	return found, nil
+}
 
+// ffmpegPlaces lists where FFmpeg turns up when it is not on PATH.
+func ffmpegPlaces() tools.Places {
 	var dirs, globs []string
 	switch runtime.GOOS {
 	case "windows":
@@ -112,35 +120,7 @@ func locate(name string) (string, error) {
 	default:
 		dirs = []string{"/usr/bin", "/usr/local/bin", "/snap/bin", "/var/lib/flatpak/exports/bin"}
 	}
-
-	for _, d := range dirs {
-		if p, ok := executableIn(d, name); ok {
-			return p, nil
-		}
-	}
-	for _, g := range globs {
-		matches, err := filepath.Glob(g)
-		if err != nil {
-			continue
-		}
-		for _, d := range matches {
-			if p, ok := executableIn(d, name); ok {
-				return p, nil
-			}
-		}
-	}
-
-	where := strings.Join(dirs, ", ")
-	if len(globs) > 0 {
-		where += ", " + strings.Join(globs, ", ")
-	}
-	return "", fmt.Errorf("%w: looked in PATH and %s", ErrNotInstalled, where)
-}
-
-func executableIn(dir, name string) (string, bool) {
-	p := filepath.Join(dir, name)
-	info, err := os.Stat(p)
-	return p, err == nil && !info.IsDir()
+	return tools.Places{Dirs: dirs, Globs: globs}
 }
 
 // WriteOptions configures an encode.

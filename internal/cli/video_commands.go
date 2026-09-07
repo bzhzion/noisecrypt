@@ -13,6 +13,7 @@ import (
 	"github.com/bzhzion/noisecrypt/internal/codec"
 	"github.com/bzhzion/noisecrypt/internal/container"
 	"github.com/bzhzion/noisecrypt/internal/crypt"
+	"github.com/bzhzion/noisecrypt/internal/fetch"
 	"github.com/bzhzion/noisecrypt/internal/profile"
 	"github.com/bzhzion/noisecrypt/internal/video"
 )
@@ -146,8 +147,9 @@ func encodeToVideo(env *Env, c *codec.Codec, tools video.Tools, sealed []byte, t
 }
 
 func runDecode(env *Env, args []string) error {
-	fs := newFlagSet(env, "decode", "-in VIDEO [-out FILE] [-profile NAME] [-identity FILE | passphrase flags]")
-	in := fs.String("in", "", "video to decode (required)")
+	fs := newFlagSet(env, "decode", "(-in VIDEO | -url ADDRESS) [-out FILE] [-profile NAME] [-identity FILE | passphrase flags]")
+	in := fs.String("in", "", "video to decode (required unless -url is given)")
+	address := fs.String("url", "", "download the video from this address first, through yt-dlp")
 	out := fs.String("out", "", "file to write (default: the name stored inside the container)")
 	profileName := fs.String("profile", profile.Archive.Name, "channel profile used to encode: "+profileList())
 	identity := fs.String("identity", "", "private identity, or a file containing one")
@@ -161,9 +163,15 @@ func runDecode(env *Env, args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	if *in == "" {
+	switch {
+	case *in == "" && *address == "":
 		fs.Usage()
-		return errors.New("-in is required")
+		return errors.New("-in or -url is required")
+	case *in != "" && *address != "":
+		// Refused rather than resolved by precedence. Either way round, one of the two
+		// is silently ignored and the user waits for work on a video they did not name.
+		fs.Usage()
+		return errors.New("give -in or -url, not both")
 	}
 
 	p, err := profile.Lookup(*profileName)
@@ -179,8 +187,35 @@ func runDecode(env *Env, args []string) error {
 		return err
 	}
 
+	source := *in
+	if *address != "" {
+		ytdlp, err := fetch.Find()
+		if err != nil {
+			return err
+		}
+		dir, err := os.MkdirTemp("", "noisecrypt-dl-*")
+		if err != nil {
+			return err
+		}
+		// The whole directory: yt-dlp chooses the extension and can leave more than one
+		// file behind, and removing only the one we predicted would leave the remains of
+		// a multi-gigabyte download in place.
+		defer os.RemoveAll(dir)
+
+		fmt.Fprintf(env.Stdout, "Downloading with %s...\n", ytdlp)
+		source, err = fetch.Get(context.Background(), ytdlp, *address, dir, maxInputSize)
+		if err != nil {
+			return err
+		}
+		info, err := os.Stat(source)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(env.Stdout, "Downloaded %s (%d bytes).\n", filepath.Base(source), info.Size())
+	}
+
 	d := c.NewDecoder()
-	info, err := video.Read(context.Background(), tools, *in, func(img *image.Gray) error {
+	info, err := video.Read(context.Background(), tools, source, func(img *image.Gray) error {
 		d.Add(img)
 		return nil
 	})
@@ -189,7 +224,7 @@ func runDecode(env *Env, args []string) error {
 	}
 
 	fmt.Fprintf(env.Stdout, "Read %s: %dx%d, %d frames, %d unreadable.\n",
-		*in, info.Width, info.Height, d.Seen, d.Unreadable)
+		source, info.Width, info.Height, d.Seen, d.Unreadable)
 	if info.Width != p.Width || info.Height != p.Height {
 		// Worth saying out loud. A mismatch is normal after a platform round trip
 		// and is exactly the case the geometry layer exists for, but it is also

@@ -10,7 +10,82 @@ patched by CI at tag time and are never committed with a real version number.
 
 ## [Unreleased]
 
+### Added
+
+- **Decode straight from a URL, when yt-dlp is installed.** `noisecrypt decode -url ...`,
+  and the same field in the interface. Recovering a container off a platform meant
+  downloading the video by hand first, which is two tools and a downloads folder for
+  something the machine can do in one step.
+  - **Optional, and never installed on your behalf.** yt-dlp is found if it is there and its
+    absence is reported, exactly as FFmpeg already was. Bundling it would end the six-target
+    build in one matrix; fetching it at the moment it is needed would give this tool an
+    update channel whether it admitted to one or not. Reported separately from FFmpeg,
+    because the two absences are not comparable: without FFmpeg the whole panel is dead,
+    without yt-dlp one field is missing and a sentence explains why.
+  - `-f bv*/b`, the best video stream and no audio. Quality is not a preference here: a
+    lower rendition has fewer pixels to a macropixel and below the profile's tolerance the
+    file does not come back. Asking for audio would also make yt-dlp merge two streams
+    through FFmpeg for a track that gets discarded.
+  - Fixed output basename, so the video's title never reaches a path. A title is
+    attacker-supplied text, and a fixed name removes the question rather than answering it
+    with an escaping rule.
+  - `--no-config` first in the argument list, and load-bearing. Without it yt-dlp reads its
+    own configuration files, which can carry any option it accepts including `--exec`: a
+    poisoned config in the user's profile would turn pasting an address into running a
+    command. Every other fixed argument only means anything behind it.
+  - `--` before the address, and an address beginning with a dash refused before that.
+    Either alone would do; both are here because the failure is silent.
+  - https only, and the host resolved and refused if it lands on a private address,
+    including **100.64.0.0/10** which `net.IP.IsPrivate` does not cover and which is this
+    parc's entire tailnet. Every resolved address is checked and not the first, since a name
+    answering with one public and one loopback address is the shape that defeats a check
+    that stops early. Stated plainly in the package documentation: yt-dlp resolves again
+    itself and follows its own redirects, so this is defence in depth on a tool whose
+    address comes from the person at the machine, not a filter between a stranger and an
+    internal network.
+  - Bounded by the command line's 8 GiB input ceiling rather than the interface's 512 MiB
+    upload limit. Nothing passes through memory on this path, so the reason that limit
+    exists does not apply, and applying it anyway would refuse exactly the videos the
+    feature is for. Checked again on disk afterwards, because `--max-filesize` works from
+    the size a site declares.
+  - **Measured, not assumed: yt-dlp's install layout is not FFmpeg's.** FFmpeg's WinGet
+    package unpacks an archive, so its binary sits two levels down under a versioned
+    directory; yt-dlp ships the executable itself and lands directly in its package
+    directory. Reusing the FFmpeg glob with the name changed would have failed in the
+    quietest possible way, declaring the field unavailable on a machine that has the tool.
+    Neither is shimmed onto `PATH` at all.
+  - **A guard was written here for a case that does not exist, and removed.** An empty
+    `<input type="file">` does submit a part, so an address with no file chosen looked like
+    it might arrive as "both were given". net/http already treats a part with an empty
+    filename as an ordinary form value, verified against both the shape a browser sends and
+    the shape `mime/multipart` writes. The check could never fire, and a guard that cannot
+    fire is worse than none because it looks like the reason something works. The test that
+    pins the behaviour stayed.
+  - Verified end to end against a real download: fetched, named, bounded, handed to the
+    decoder, and correctly refused as not being a NoiseCrypt video. **Not yet verified is
+    the one link that needs a platform**, namely that `-f bv*/b` picks the rendition a
+    container survives in. That needs a video uploaded for the purpose, and this time its
+    address gets recorded.
+  - ⚠️ **YouTube specifically now needs a JavaScript runtime.** With yt-dlp 2026.06.09 and
+    no runtime installed, YouTube answers `403` and yt-dlp says why. The message is passed
+    through verbatim, naming its own wiki page, so this reports itself. Other sites and
+    direct video URLs are unaffected.
+
+### Changed
+
+- **The search for an external program moved to `internal/tools`.** It lived in
+  `internal/video` with FFmpeg's directory list written into it, and a second caller needed
+  the same search with a different list. Copying it would have meant two places to fix the
+  day a package manager moves something. It now also checks the execute bit on Unix, which
+  the FFmpeg-only version did not.
+
 ### Fixed
+
+- **The address field shipped at half the width of every other field.** The stylesheet
+  enumerates input types rather than styling `input` bare, so that a checkbox is not
+  stretched across the column, and `url` was not among them. The failure is silent and
+  cosmetic: the field works, it just looks wrong. Caught by measuring the rendered widths in
+  a real browser, not by reading the CSS.
 
 - **The installer announced `0.0.0.0` as its file version.** It was hardcoded, so every
   published installer up to and including 0.4.0 reports that in its Windows properties.

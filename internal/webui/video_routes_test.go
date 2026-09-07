@@ -51,6 +51,95 @@ func post(t *testing.T, s *Server, path string, file []byte, filename string, fi
 	return resp
 }
 
+// postFields sends a form with no file part at all, which is what the page does once an
+// address has been typed. Separate from post because post always writes a file part, and
+// a test that used it could never exercise the address path.
+func postFields(t *testing.T, s *Server, path string, fields map[string]string) *http.Response {
+	t.Helper()
+
+	var body bytes.Buffer
+	mw := multipart.NewWriter(&body)
+	for k, v := range fields {
+		if err := mw.WriteField(k, v); err != nil {
+			t.Fatalf("writing field %s: %v", k, err)
+		}
+	}
+	if err := mw.Close(); err != nil {
+		t.Fatalf("closing the form: %v", err)
+	}
+
+	req, err := http.NewRequest(http.MethodPost, "http://"+s.Addr()+path, &body)
+	if err != nil {
+		t.Fatalf("building the request: %v", err)
+	}
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	req.Header.Set("X-NoiseCrypt-Token", s.token)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("performing the request: %v", err)
+	}
+	t.Cleanup(func() { _ = resp.Body.Close() })
+	return resp
+}
+
+// The decoding route takes a file or an address. These are the ways that can go wrong
+// before any download starts, and each one has to be refused for its own reason: a
+// request refused by the wrong rule is a rule that stops working silently.
+func TestDecodeSourceIsExclusiveAndChecked(t *testing.T) {
+	requireFFmpeg(t)
+	s := start(t)
+
+	const pass = "correcte-horse-battery"
+
+	t.Run("neither", func(t *testing.T) {
+		resp := postFields(t, s, "/api/decode",
+			map[string]string{"passphrase": pass, "profile": "archive"})
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("a request naming nothing returned %d", resp.StatusCode)
+		}
+	})
+
+	t.Run("both", func(t *testing.T) {
+		resp := post(t, s, "/api/decode", []byte("not a video"), "clip.mp4", map[string]string{
+			"passphrase": pass, "profile": "archive",
+			"url": "https://example.com/clip.mp4",
+		})
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("a request naming both returned %d", resp.StatusCode)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		// Named explicitly rather than resolved by precedence, because whichever one
+		// were ignored, the user would wait for work on a video they did not choose.
+		if !strings.Contains(string(body), "not both") {
+			t.Errorf("the refusal does not say why:\n%s", body)
+		}
+	})
+
+	// The empty file input, which a browser submits as a part regardless. It has to be
+	// read as an address alone, or the field never works from a real page even though
+	// every server-side test of it passes. net/http already does the right thing here
+	// (a part with an empty filename is a form value, not a file), so this test guards
+	// someone else's behaviour rather than ours, which is precisely why it is worth
+	// having: the code depends on it and nothing else states it.
+	t.Run("address with an empty file part", func(t *testing.T) {
+		resp := post(t, s, "/api/decode", nil, "", map[string]string{
+			"passphrase": pass, "profile": "archive",
+			"url": "http://example.com/clip.mp4",
+		})
+		body, _ := io.ReadAll(resp.Body)
+		if strings.Contains(string(body), "not both") {
+			t.Fatalf("an empty file input was read as a submitted file:\n%s", body)
+		}
+		// It gets as far as the address, and the address is then refused on its own
+		// merits: plain http, or yt-dlp being absent. Either proves the part was
+		// correctly ignored; what matters is that it was not mistaken for a file.
+		if resp.StatusCode == http.StatusOK {
+			t.Fatalf("a plain http address was accepted")
+		}
+	})
+}
+
 func requireFFmpeg(t *testing.T) {
 	t.Helper()
 	if _, err := video.Find(); err != nil {

@@ -549,6 +549,19 @@ Everything else, including all the encryption, needs nothing installed at all. T
 tells you once, when the page loads, rather than failing after you have chosen a file and
 typed a passphrase.
 
+**yt-dlp is optional**, and only saves a step. Getting a container back off a platform
+otherwise means downloading the video by hand first. If yt-dlp is installed, paste the
+address instead:
+
+```sh
+noisecrypt decode -url "https://..." -profile social
+```
+
+and the same field appears in the interface. If it is not installed, everything else works
+exactly as before and the page says so rather than offering a field that fails. Neither
+program is bundled and neither is ever downloaded: a tool whose argument is that it depends
+on nothing at rest should not acquire an update channel at the moment it is used.
+
 Building it yourself needs Go 1.26.6 or newer and nothing else. There is no C toolchain, no
 node_modules, no build step for the interface: `go build ./cmd/noisecrypt` and you are done.
 

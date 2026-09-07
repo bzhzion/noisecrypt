@@ -499,8 +499,20 @@ document.getElementById('form-decode').addEventListener('submit', async (event) 
   const out = document.getElementById('out-decode');
   const button = form.querySelector('button[type="submit"]');
 
-  await longRunning(button, out, 'Reading every frame...', async () => {
-    const response = await api('/api/decode', { method: 'POST', body: new FormData(form) });
+  const address = document.getElementById('dec-url').value.trim();
+  const body = new FormData(form);
+  // Both entries are dropped when empty rather than sent blank. An empty file input
+  // submits a part all the same, with no name and no bytes, so a request that named an
+  // address would arrive looking like one that named both and be refused.
+  if (address === '') body.delete('url');
+  else body.delete('file');
+
+  const waiting = address === ''
+    ? 'Reading every frame...'
+    : 'Downloading, then reading every frame...';
+
+  await longRunning(button, out, waiting, async () => {
+    const response = await api('/api/decode', { method: 'POST', body });
     if (!response.ok) {
       show(out, await errorFrom(response), 'error');
       return;
@@ -528,6 +540,46 @@ document.getElementById('form-decode').addEventListener('submit', async (event) 
   });
 });
 
+// yt-dlp is not bundled either, and its absence costs far less than FFmpeg's: everything
+// works, and only the field that would have saved a manual download is missing. So it is
+// a sentence rather than a warning, and the field only exists when the tool does.
+//
+// The file input stops being required the moment an address is typed, and becomes
+// required again when the address is cleared. Leaving `required` on both would make the
+// browser refuse to submit a perfectly good request, and taking it off both would let an
+// empty form through to be refused by the server instead of by the field.
+function announceYtdlp(tools) {
+  const file = document.getElementById('dec-file');
+  const box = document.getElementById('dec-url-box');
+  const url = document.getElementById('dec-url');
+
+  if (!tools.ytdlp) {
+    const absent = document.getElementById('dec-url-absent');
+    absent.innerHTML =
+      'Install <code>yt-dlp</code> and a field appears here for pasting the address of ' +
+      'a video, so it can be fetched and decoded in one step instead of being ' +
+      'downloaded by hand first.';
+    absent.hidden = false;
+    return;
+  }
+
+  document.getElementById('dec-url-hint').innerHTML =
+    'Fetched with <code>yt-dlp</code>, at the highest quality the channel still offers. ' +
+    'A lower rendition has fewer pixels to a macropixel, and below the profile\'s ' +
+    'tolerance the file does not come back at all.';
+  box.hidden = false;
+
+  const sync = () => {
+    const typed = url.value.trim() !== '';
+    file.required = !typed;
+    // Disabled and not merely optional, so the exclusivity is visible rather than
+    // discovered by having a request refused.
+    file.disabled = typed;
+  };
+  url.addEventListener('input', sync);
+  sync();
+}
+
 // FFmpeg is not bundled. Say so once, up front, rather than letting a button fail after
 // the user has chosen a file and typed a passphrase.
 (async () => {
@@ -535,6 +587,7 @@ document.getElementById('form-decode').addEventListener('submit', async (event) 
     const response = await api('/api/tools');
     if (!response.ok) return;
     const tools = await response.json();
+    announceYtdlp(tools);
     if (tools.ffmpeg) return;
 
     const banner = document.getElementById('no-ffmpeg');

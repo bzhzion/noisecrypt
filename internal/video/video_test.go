@@ -15,9 +15,9 @@ import (
 	"github.com/bzhzion/noisecrypt/internal/profile"
 )
 
-// tools resolves FFmpeg, skipping unless RequireEnv is set. See its documentation
+// resolveTools resolves FFmpeg, skipping unless RequireEnv is set. See its documentation
 // for why the default is a skip and why CI does not accept one.
-func tools(t *testing.T) Tools {
+func resolveTools(t *testing.T) Tools {
 	t.Helper()
 	tl, err := Find()
 	if err != nil {
@@ -47,7 +47,7 @@ func TestFindReportsWhereItLooked(t *testing.T) {
 // point was measured against a simulated channel; this one is measured against
 // x264.
 func TestRealVideoRoundTrip(t *testing.T) {
-	tl := tools(t)
+	tl := resolveTools(t)
 	ctx := context.Background()
 
 	c, err := codec.New(profile.Social)
@@ -140,7 +140,7 @@ func TestRealVideoRoundTrip(t *testing.T) {
 // without uploading anything: the produced video is re-encoded at a much lower
 // quality, exactly as an ingest pipeline would, and must still decode.
 func TestSurvivesRecompression(t *testing.T) {
-	tl := tools(t)
+	tl := resolveTools(t)
 	ctx := context.Background()
 
 	c, err := codec.New(profile.Social)
@@ -220,7 +220,7 @@ func TestSurvivesRecompression(t *testing.T) {
 }
 
 func TestProbeRejectsNonVideo(t *testing.T) {
-	tl := tools(t)
+	tl := resolveTools(t)
 
 	path := filepath.Join(t.TempDir(), "not-a-video.mp4")
 	if err := writeFile(path, []byte("this is not an mp4")); err != nil {

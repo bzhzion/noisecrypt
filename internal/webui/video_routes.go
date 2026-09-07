@@ -11,9 +11,18 @@ import (
 	"strings"
 
 	"github.com/bzhzion/noisecrypt/internal/codec"
+	"github.com/bzhzion/noisecrypt/internal/fetch"
 	"github.com/bzhzion/noisecrypt/internal/profile"
 	"github.com/bzhzion/noisecrypt/internal/video"
 )
+
+// maxDownload bounds what a URL may pull in.
+//
+// Deliberately not maxUpload. That limit exists because an upload passes through memory;
+// a download goes straight to disk, so the reason does not apply, and applying it anyway
+// would refuse the videos this feature exists for. It matches the command line's ceiling
+// on an input, which is where the number was already argued.
+const maxDownload = 8 << 30 // 8 GiB
 
 // The video routes are the only ones that touch the filesystem or another process.
 //
@@ -41,18 +50,30 @@ func (s *Server) videoRoutes() {
 // Asked up front so the page can say so plainly instead of offering a button that fails
 // after the user has chosen a file, typed a passphrase and waited.
 func (s *Server) handleTools(w http.ResponseWriter, r *http.Request) {
+	answer := map[string]any{}
+
+	// Reported separately from FFmpeg rather than folded into one "tools are ready"
+	// flag: the two absences have nothing to do with each other. Without FFmpeg the
+	// whole panel is dead; without yt-dlp everything works and only the URL field is
+	// missing, which is a sentence the page can say instead of a section it has to hide.
+	if ytdlp, err := fetch.Find(); err == nil {
+		answer["ytdlp"] = true
+		answer["ytdlpPath"] = ytdlp
+	} else {
+		answer["ytdlp"] = false
+		answer["ytdlpReason"] = err.Error()
+	}
+
 	tools, err := video.Find()
 	if err != nil {
-		writeJSON(w, http.StatusOK, map[string]any{
-			"ffmpeg": false,
-			"reason": err.Error(),
-		})
+		answer["ffmpeg"] = false
+		answer["reason"] = err.Error()
+		writeJSON(w, http.StatusOK, answer)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"ffmpeg":     true,
-		"ffmpegPath": tools.FFmpeg,
-	})
+	answer["ffmpeg"] = true
+	answer["ffmpegPath"] = tools.FFmpeg
+	writeJSON(w, http.StatusOK, answer)
 }
 
 // handleEstimate answers "what will this cost" without spending anything.
@@ -213,8 +234,72 @@ const (
 	defaultPreset = "medium"
 )
 
+// localCopy puts the video on disk, whichever way it arrived, and returns the path plus
+// the function that removes it.
+//
+// FFmpeg reads a file and not a stream of form data, so an uploaded video was already
+// being written to a temporary file. A downloaded one arrives on disk in the first place.
+// The two converge here so that everything after this point in the decoding route is one
+// path and not two, which is what keeps a fix to the decoder from being a fix to one half
+// of the decoder.
+func localCopy(ctx context.Context, req sealRequest) (path string, cleanup func(), code int, err error) {
+	if req.url != "" {
+		ytdlp, err := fetch.Find()
+		if err != nil {
+			return "", nil, http.StatusServiceUnavailable, err
+		}
+		dir, err := os.MkdirTemp("", "noisecrypt-dl-*")
+		if err != nil {
+			return "", nil, http.StatusInternalServerError, err
+		}
+		// The whole directory, not the file: yt-dlp decides the extension and may leave
+		// more than one thing behind, and removing only what we predicted would leave
+		// the rest of a several-gigabyte download in the temporary directory.
+		remove := func() { _ = os.RemoveAll(dir) }
+
+		// Bounded by the command line's ceiling on an input rather than the interface's
+		// upload limit. Nothing here passes through memory, so the reason the upload
+		// limit exists does not apply, and holding a download to 512 MiB would refuse
+		// exactly the videos this feature is for: the toughest profile turns a few
+		// mebibytes into hours of it.
+		file, err := fetch.Get(ctx, ytdlp, req.url, dir, maxDownload)
+		if err != nil {
+			remove()
+			if ctx.Err() != nil {
+				return "", nil, http.StatusRequestTimeout, err
+			}
+			return "", nil, http.StatusBadRequest, err
+		}
+		return file, remove, 0, nil
+	}
+
+	// The extension is preserved because FFmpeg uses it to pick a demuxer, and a
+	// platform hands back .mp4 or .webm depending on the rendition.
+	ext := strings.ToLower(filepath.Ext(req.name))
+	if ext == "" || len(ext) > 5 {
+		ext = ".mp4"
+	}
+	tmp, err := os.CreateTemp("", "noisecrypt-in-*"+ext)
+	if err != nil {
+		return "", nil, http.StatusInternalServerError, err
+	}
+	name := tmp.Name()
+	remove := func() { _ = os.Remove(name) }
+
+	if _, err := tmp.Write(req.data); err != nil {
+		_ = tmp.Close()
+		remove()
+		return "", nil, http.StatusInternalServerError, err
+	}
+	if err := tmp.Close(); err != nil {
+		remove()
+		return "", nil, http.StatusInternalServerError, err
+	}
+	return name, remove, 0, nil
+}
+
 func (s *Server) handleDecode(w http.ResponseWriter, r *http.Request) {
-	req, err := readSealRequest(r)
+	req, err := readDecodeRequest(r)
 	if err != nil {
 		fail(w, http.StatusBadRequest, err)
 		return
@@ -235,29 +320,12 @@ func (s *Server) handleDecode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// The extension is preserved because FFmpeg uses it to pick a demuxer, and a
-	// platform hands back .mp4 or .webm depending on the rendition.
-	ext := strings.ToLower(filepath.Ext(req.name))
-	if ext == "" || len(ext) > 5 {
-		ext = ".mp4"
-	}
-	tmp, err := os.CreateTemp("", "noisecrypt-in-*"+ext)
+	path, cleanup, code, err := localCopy(r.Context(), req)
 	if err != nil {
-		fail(w, http.StatusInternalServerError, err)
+		fail(w, code, err)
 		return
 	}
-	path := tmp.Name()
-	defer os.Remove(path)
-
-	if _, err := tmp.Write(req.data); err != nil {
-		_ = tmp.Close()
-		fail(w, http.StatusInternalServerError, err)
-		return
-	}
-	if err := tmp.Close(); err != nil {
-		fail(w, http.StatusInternalServerError, err)
-		return
-	}
+	defer cleanup()
 
 	d := c.NewDecoder()
 	info, err := video.Read(r.Context(), tools, path, func(img *image.Gray) error {
