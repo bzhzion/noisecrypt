@@ -10,6 +10,8 @@ patched by CI at tag time and are never committed with a real version number.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-07
+
 ### Added
 
 - **Decode straight from a URL, when yt-dlp is installed.** `noisecrypt decode -url ...`,
