@@ -29,6 +29,45 @@ jobs:
     timeout-minutes: 15
 
     steps:
+      # This job can only ever *update* a package that already exists upstream, and the
+      # first submission has to be made by hand. Until that has been merged there is
+      # nothing to update, and `wingetcreate update` fails with a message about the package
+      # not being found that reads like a typo in the identifier rather than like a missing
+      # prerequisite. So the prerequisite is checked, and named.
+      #
+      # This is also the safeguard that travels with the repository. The workflow is
+      # additionally disabled through `gh workflow disable`, which is tidier and cannot be
+      # relied on alone: that state lives on GitHub and not here, so a clone does not carry
+      # it, exactly like `core.hooksPath`. Once the package is upstream, run
+      # `gh workflow enable publish-winget.yml`.
+      - name: Preflight
+        shell: pwsh
+        env:
+          WINGET_PAT: ${{ secrets.WINGET_PAT }}
+        run: |
+          # A hyphen, not just emptiness. `gh secret set NAME --body -` stores the literal
+          # string "-" instead of reading stdin, which is not empty and satisfies every
+          # naive check: that is how a release was once attempted with hyphens for
+          # credentials.
+          if ([string]::IsNullOrWhiteSpace($env:WINGET_PAT) -or $env:WINGET_PAT -eq "-") {
+            Write-Host "::error title=Not configured::WINGET_PAT is missing or is a placeholder."
+            exit 1
+          }
+
+          $path = "manifests/b/Breizhzion/NoiseCrypt"
+          $url  = "https://api.github.com/repos/microsoft/winget-pkgs/contents/$path"
+          try {
+            Invoke-RestMethod -Uri $url -Headers @{
+              Authorization = "Bearer $env:WINGET_PAT"
+              Accept        = "application/vnd.github+json"
+              "User-Agent"  = "noisecrypt-ci"
+            } | Out-Null
+          } catch {
+            Write-Host "::error title=Package not published yet::Breizhzion.NoiseCrypt does not exist in microsoft/winget-pkgs, so there is nothing for 'wingetcreate update' to update. Submit it once by hand with 'wingetcreate new' and wait for that pull request to be merged, then re-run this."
+            exit 1
+          }
+          Write-Host "Breizhzion.NoiseCrypt is present upstream. Proceeding."
+
       - name: Find the installers in the release
         id: release
         shell: pwsh

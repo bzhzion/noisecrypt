@@ -59,6 +59,23 @@ patched by CI at tag time and are never committed with a real version number.
     *submits*, and Microsoft then runs certification, which is far slower than every other
     channel. At any moment the Store legitimately serves an older version than winget.
 
+### Changed
+
+- **The winget workflow is disabled until the package exists upstream**, and now refuses
+  rather than failing obscurely. It can only ever *update* a package that is already in
+  `microsoft/winget-pkgs`; until pull request #430831 is merged there is nothing to update,
+  and `wingetcreate update` fails with a "package not found" message that reads like a typo
+  in the identifier rather than like a missing prerequisite.
+  - The preflight queries the upstream manifest path and names the prerequisite if it is
+    absent. **Proved in both directions before being trusted**, inside our own publisher
+    folder: `Breizhzion/JustMakeQ` answers 200 and would let the job proceed,
+    `Breizhzion/NoiseCrypt` answers 404 and stops it. A check that has only ever been
+    observed refusing has not been shown to be capable of agreeing.
+  - Also disabled through `gh workflow disable`, which is tidier and deliberately not the
+    only measure: that state lives on GitHub rather than in the repository, so a clone does
+    not carry it, exactly like `core.hooksPath`. Re-enable with
+    `gh workflow enable publish-winget.yml` once the package is upstream.
+
 ### Fixed
 
 - `.gitattributes` now names `.ico`, `.syso` and `.exe` as binary. `* text=auto` already
