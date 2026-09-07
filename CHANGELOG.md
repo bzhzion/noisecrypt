@@ -12,6 +12,31 @@ patched by CI at tag time and are never committed with a real version number.
 
 ### Added
 
+- **A winget publishing workflow**, `Breizhzion.NoiseCrypt`, on **manual trigger only**.
+  Publishing opens a pull request against `microsoft/winget-pkgs`, a busy third-party
+  repository reviewed by external maintainers, so it must not fire on every tag and least
+  of all during a run of test builds.
+  - No chained opt-in variable, deliberately. The mechanism used previously in this
+    ecosystem (a repository variable set true, consumed, reset false) rested on a token
+    that answered 401 **without failing the step**, so the variable stayed stuck at true
+    and everything published automatically: precisely what it existed to prevent. A
+    workflow that only runs when you run it does not have that failure mode.
+  - Both architectures are submitted, with the architecture **stated rather than
+    detected**: winget's vocabulary is x64/x86/arm64 and these filenames say `amd64`,
+    which it has no reason to recognise. Detection failing there produces no error, it
+    produces a manifest with the wrong architecture on it.
+  - The fork is resynchronised first, non-blocking: `painteau/winget-pkgs` falls behind
+    upstream and `wingetcreate` then fails claiming the fork could not be synced.
+  - Signing and publishing credentials are now configured on the repository. The winget
+    token was **tested before being trusted** (200, scope `repo`, push access to the
+    fork) rather than copied on the assumption that a stored secret is a working one,
+    which is the same lesson as the paragraph above. The Azure signing secret was copied,
+    never regenerated: resetting it would invalidate it for every other repository that
+    shares the same service principal.
+  - Still requires one manual `wingetcreate new` submission before `update` has anything
+    to update, and no release carries an installer yet, so this workflow is written and
+    unexercised.
+
 - **A Windows installer**, built per architecture by the release workflow and signed with
   Azure Trusted Signing.
   - **Per-user, and it never asks for administrator.** Everything the program needs lives

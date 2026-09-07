@@ -1,0 +1,95 @@
+name: Publish to winget
+
+# Deliberately decoupled from the release build: manual trigger only, never automatic.
+# Publishing to winget opens a pull request against `microsoft/winget-pkgs`, a very busy
+# third-party repository reviewed by external maintainers. That is not something that
+# should go out on every tag, least of all during a run of test builds.
+#
+# No chained opt-in variable here. The mechanism used previously elsewhere in this
+# ecosystem (a repository variable set to true, consumed, then reset to false at the end of
+# the job) rested on a token that answered 401 without failing the step, so the variable
+# stayed stuck at true and everything published automatically: exactly what it existed to
+# prevent. A workflow that only runs when you run it does not have that problem.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish (e.g. 0.3.0). A GitHub Release must already exist for it.'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  winget:
+    name: Update the Breizhzion.NoiseCrypt manifest
+    runs-on: windows-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Find the installers in the release
+        id: release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          $tag = "v$($env:VERSION)"
+          $assets = gh release view $tag --repo ${{ github.repository }} --json assets -q '.assets[].name'
+
+          # One installer per architecture, and both are required: a manifest that lists
+          # only x64 silently leaves ARM64 machines on emulation, or on nothing at all.
+          $x64 = $assets | Where-Object { $_ -like '*-amd64-setup.exe' } | Select-Object -First 1
+          $arm = $assets | Where-Object { $_ -like '*-arm64-setup.exe' } | Select-Object -First 1
+          if (-not $x64) { throw "No amd64 installer in release $tag" }
+          if (-not $arm) { throw "No arm64 installer in release $tag" }
+
+          Write-Host "Tag $tag`n  x64:   $x64`n  arm64: $arm"
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "x64=$x64" >> $env:GITHUB_OUTPUT
+          "arm=$arm" >> $env:GITHUB_OUTPUT
+
+      # This repository being public, a GitHub Release asset is already a stable, publicly
+      # reachable URL that is never overwritten, which is exactly what winget requires. No
+      # intermediate bucket or CDN is needed.
+      #
+      # PREREQUISITE: the package must have been submitted once by hand
+      # (`wingetcreate new`, pull request opened and merged on microsoft/winget-pkgs).
+      # Until that has happened `update` fails, because there is nothing to update.
+      - name: wingetcreate update
+        env:
+          WINGET_PAT: ${{ secrets.WINGET_PAT }}
+          VERSION: ${{ inputs.version }}
+          BASE: https://github.com/${{ github.repository }}/releases/download/${{ steps.release.outputs.tag }}
+        shell: pwsh
+        run: |
+          # The personal fork falls behind microsoft/winget-pkgs, which is a very
+          # high-traffic repository, and wingetcreate then fails with "the forked
+          # repository could not be synced". Resynchronised first, non-blocking.
+          try {
+            Invoke-RestMethod -Method Post `
+              -Uri "https://api.github.com/repos/painteau/winget-pkgs/merge-upstream" `
+              -Headers @{ Authorization = "Bearer $env:WINGET_PAT"; Accept = "application/vnd.github+json" } `
+              -Body (@{ branch = "master" } | ConvertTo-Json) `
+              -ContentType "application/json"
+          } catch {
+            Write-Warning "Syncing the winget-pkgs fork failed (non-blocking): $_"
+          }
+
+          Invoke-WebRequest -Uri "https://aka.ms/wingetcreate/latest" -OutFile "wingetcreate.exe"
+
+          # The architecture is stated rather than left to be detected. winget's vocabulary
+          # is x64/x86/arm64, and these filenames say "amd64", which it has no reason to
+          # recognise. Detection failing here does not produce an error, it produces a
+          # manifest with the wrong architecture on it.
+          $x64 = "$env:BASE/${{ steps.release.outputs.x64 }}|x64"
+          $arm = "$env:BASE/${{ steps.release.outputs.arm }}|arm64"
+
+          .\wingetcreate.exe update Breizhzion.NoiseCrypt `
+            --version $env:VERSION `
+            --urls "$x64" "$arm" `
+            --token $env:WINGET_PAT `
+            --submit `
+            --no-open
