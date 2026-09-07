@@ -36,6 +36,24 @@ patched by CI at tag time and are never committed with a real version number.
   - Still requires one manual `wingetcreate new` submission before `update` has anything
     to update, and no release carries an installer yet, so this workflow is written and
     unexercised.
+  - The release workflow was **exercised before any tag**, by a manual run: `publish` is
+    gated on `github.ref_type == 'tag'` so it skips, which makes a dispatch a real
+    rehearsal of the build, the signing and both architectures while publishing nothing.
+    It failed the first time, which is the point of rehearsing.
+  - ⚠️ **And the reason it failed is worth writing down: `gh secret set NAME --body -` does
+    not read standard input, it sets the secret to the literal string `-`.** All four
+    secrets were a single hyphen. Azure answered `AADSTS900023`, "tenant identifier is
+    neither a valid DNS name nor a valid external domain", which is exactly what a hyphen
+    earns. What makes this one nasty is that GitHub masks secret values in logs, so the
+    wrong value printed as `***`, indistinguishable from the right one, and the guard that
+    decides whether to sign at all (`secrets.AZURE_CLIENT_SECRET != ''`) was perfectly
+    happy: a hyphen is not empty. `gh secret set` reads stdin **only when `--body` is
+    absent**.
+  - Verified on the artefact a user would actually download, not just on the build log:
+    signature `Valid`, signer `CN=Breizhzion, L=Villeurbanne`, issuer the Microsoft
+    verified CS authority, timestamp present, then installed and uninstalled cleanly.
+    Checking the status alone would not have caught a file signed by the wrong identity,
+    because "Valid" does not say **who**.
 
 - **A Windows installer**, built per architecture by the release workflow and signed with
   Azure Trusted Signing.
