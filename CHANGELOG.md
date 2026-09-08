@@ -12,6 +12,20 @@ patched by CI at tag time and are never committed with a real version number.
 
 ### Fixed
 
+- **The Start Menu shortcut never did what it says.** It is described as "Open the
+  NoiseCrypt interface" and passed **no arguments**, so clicking it opened a console,
+  printed the help text and closed again: `noisecrypt.exe` with no command exits 2, a usage
+  error. It now passes `gui`.
+  - Nobody noticed because the tool is used from a terminal, and because verifying an
+    installation through the registry does not click the shortcuts. Found while
+    investigating why winget's validation pipeline flagged the package.
+  - **This is the most plausible cause of the `Validation-Executable-Error`** on winget PR
+    #430831: the pipeline installs, then launches the primary executable, and that
+    executable returned 2.
+  - Verified by building the installer, installing it, and checking that the shortcut
+    target now stays alive and serves the interface on `127.0.0.1` with HTTP 200, rather
+    than reading the argument off the shortcut and calling it done.
+
 - **The binary's Windows properties said `dev`, and 0.5.0 shipped that way.** Found while
   installing the release on a real machine: `noisecrypt version` correctly reported 0.5.0
   while right-clicking the file showed `dev` as both file version and product version.

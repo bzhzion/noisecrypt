@@ -121,7 +121,18 @@ Source: "..\LICENSE.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\CHANGELOG.md"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\{#AppName}"; Filename: "{app}\noisecrypt.exe"; Comment: "Open the NoiseCrypt interface"
+; ⚠️ `gui`, et l'absence de ce parametre etait un vrai defaut, pas un detail de winget.
+; Le raccourci se decrit depuis toujours comme « Open the NoiseCrypt interface » et ne
+; passait AUCUN argument, donc un clic ouvrait une console, imprimait le texte d'aide et
+; se fermait aussitot : `noisecrypt.exe` sans commande sort en code 2, une erreur d'usage.
+; Il n'a jamais fait ce qu'il annonce, et personne ne s'en apercevait parce que l'outil
+; s'utilise au terminal et que verifier une installation par le registre ne clique pas
+; sur les raccourcis.
+;
+; C'est aussi l'explication la plus plausible du `Validation-Executable-Error` pose par le
+; pipeline de winget sur la PR #430831 : il installe puis lance l'executable principal, et
+; celui-ci lui rendait 2.
+Name: "{group}\{#AppName}"; Filename: "{app}\noisecrypt.exe"; Parameters: "gui"; Comment: "Open the NoiseCrypt interface"
 Name: "{group}\Uninstall {#AppName}"; Filename: "{uninstallexe}"
 
 [Run]
