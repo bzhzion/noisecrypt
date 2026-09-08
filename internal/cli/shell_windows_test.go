@@ -134,6 +134,59 @@ func TestShellRegisterWritesEveryEntry(t *testing.T) {
 	}
 }
 
+// ⚠️ Le defaut rapporte par painteau : un clic droit sur un `.ncry` ne proposait QUE de le
+// rechiffrer. Deux causes, et il fallait les deux pour produire ce menu.
+//
+// D'une part le verbe de dechiffrement n'avait pas de libelle. Il existait bien, comme
+// action par defaut du type, mais Windows affiche alors « Ouvrir », un mot qui ne dit pas
+// que le fichier va etre dechiffre. D'autre part le verbe de chiffrement est pose sur `*`,
+// donc sur tous les fichiers, conteneurs compris. Entre un « Ouvrir » muet et un « Encrypt
+// with NoiseCrypt » explicite, le menu semblait n'offrir que le rechiffrement, sur le seul
+// fichier pour lequel ca n'a aucun sens.
+func TestMenuDUnConteneurProposeDeDechiffrer(t *testing.T) {
+	scratchRoot(t)
+
+	if _, _, code := run("shell", "register"); code != 0 {
+		t.Fatal("shell register a echoue")
+	}
+
+	// Le verbe de dechiffrement doit porter un nom, et ce nom doit dire ce qu'il fait.
+	k, err := registry.OpenKey(registry.CURRENT_USER, decryptKey()+`\shell\open`, registry.QUERY_VALUE)
+	if err != nil {
+		t.Fatalf("le verbe d'ouverture n'existe pas : %v", err)
+	}
+	libelle, _, err := k.GetStringValue("")
+	k.Close()
+	if err != nil || libelle == "" {
+		t.Fatalf("le verbe de dechiffrement n'a pas de libelle, Windows affichera "+
+			"« Ouvrir » : %v", err)
+	}
+	if !strings.Contains(libelle, "Decrypt") {
+		t.Errorf("le libelle est %q, il ne dit pas qu'il dechiffre", libelle)
+	}
+
+	// Et le chiffrement doit s'exclure des conteneurs, sinon il reste la seule entree
+	// explicite du menu d'un `.ncry`.
+	e, err := registry.OpenKey(registry.CURRENT_USER, encryptKey(), registry.QUERY_VALUE)
+	if err != nil {
+		t.Fatalf("le verbe de chiffrement n'existe pas : %v", err)
+	}
+	applique, _, err := e.GetStringValue("AppliesTo")
+	e.Close()
+	if err != nil {
+		t.Fatalf("le verbe de chiffrement n'a pas d'AppliesTo, il s'affiche donc aussi "+
+			"sur les .ncry : %v", err)
+	}
+	if !strings.Contains(applique, containerExt) {
+		t.Errorf("AppliesTo vaut %q et ne mentionne pas %s", applique, containerExt)
+	}
+	// La negation est le coeur de la clause : sans elle, la requete restreindrait le
+	// chiffrement aux SEULS conteneurs, soit exactement l'inverse.
+	if !strings.Contains(applique, "NOT") {
+		t.Errorf("AppliesTo vaut %q, sans negation il restreint au lieu d'exclure", applique)
+	}
+}
+
 // Uninstalling has to leave nothing. A stale key pointing at a program that no longer
 // exists gives a menu entry that silently does nothing, which is worse than no entry.
 func TestShellUnregisterLeavesNothing(t *testing.T) {

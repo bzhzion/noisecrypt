@@ -10,6 +10,30 @@ patched by CI at tag time and are never committed with a real version number.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Right-clicking a `.ncry` offered only to re-encrypt it.** Reported by painteau. Two
+  causes, and it took both to produce that menu.
+  - The decrypt verb **had no label**. It existed, as the file type's default action, but
+    Windows then shows it as "Open", a word that does not say the file will be decrypted.
+    It now reads "Decrypt with NoiseCrypt" and carries the container icon.
+  - The encrypt verb is registered on `*`, so on every file, containers included. It now
+    excludes them through `AppliesTo`, because re-encrypting a container into
+    `thing.ncry.ncry` is the one thing nobody wants on that menu.
+  - Between a mute "Open" and an explicit "Encrypt with NoiseCrypt", the menu genuinely
+    looked like it only offered re-encryption. **Neither half alone explains the report**,
+    which is why both are fixed.
+  - The summary `shell register` and `shell status` print was corrected too: it claimed
+    "Right-click any file" and never mentioned decrypting at all. A recap that misdescribes
+    the integration it just wrote is the same defect as the rest.
+  - `.ncry` now exists as one constant. It was hardcoded in the extension key, and the new
+    clause needs the same value: two literals that must agree with nothing linking them.
+  - Tests pinned, **and proved red on each of the two defects separately** before being
+    kept.
+  - ⚠️ **Not verifiable from here**: whether Explorer honours `AppliesTo`. The value is
+    written and the mechanism is documented, but the only real test is a right-click, and
+    this morning's lesson was exactly that inspecting the registry clicks nothing.
+
 ## [0.6.0] - 2026-09-08
 
 ### Changed

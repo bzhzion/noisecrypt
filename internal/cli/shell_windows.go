@@ -45,6 +45,11 @@ const progID = "NoiseCrypt.Container"
 // container would quietly wear the program's own icon and nothing would report it.
 const containerIconIndex = "1"
 
+// containerExt, une seule fois. Elle etait ecrite en dur dans extensionKey, et le verbe de
+// chiffrement a maintenant besoin de la meme valeur pour s'exclure des conteneurs : deux
+// litteraux qui doivent concorder et que rien ne relierait.
+const containerExt = ".ncry"
+
 // shellRoot is a variable so a test can exercise the registry mechanics somewhere
 // harmless. A test that rewrites the developer's real file associations is a test that
 // gets disabled, and then the mechanics go untested.
@@ -52,7 +57,7 @@ var shellRoot = `Software\Classes`
 
 func encryptKey() string   { return shellRoot + `\*\shell\NoiseCryptEncrypt` }
 func decryptKey() string   { return shellRoot + `\` + progID }
-func extensionKey() string { return shellRoot + `\.ncry` }
+func extensionKey() string { return shellRoot + `\` + containerExt }
 func identityKey() string {
 	return shellRoot + `\Directory\Background\shell\NoiseCryptIdentity`
 }
@@ -88,10 +93,14 @@ func shellRegister(env *Env) error {
 
 	entries := []struct {
 		key, name, command, icon string
+
+		// appliesTo restreint le verbe a certains fichiers, en syntaxe de requete
+		// Windows. Vide, le verbe s'applique a tout ce que sa cle couvre.
+		appliesTo string
 	}{
 		{
-			encryptKey(),
-			"Encrypt with NoiseCrypt",
+			key:  encryptKey(),
+			name: "Encrypt with NoiseCrypt",
 			// ⚠️ `-to-self`, et c'est ce qui rend les deux clics symetriques. Le
 			// double-clic qui dechiffre consulte DEJA l'identite de cette machine sur un
 			// conteneur hybride, sans rien demander ; chiffrer sous une phrase de passe
@@ -103,17 +112,28 @@ func shellRegister(env *Env) error {
 			// comportement, changer ce qu'elle produit sans le dire fabriquerait des
 			// conteneurs ouvrables sur une seule machine a la place de conteneurs
 			// ouvrables partout.
-			quoted + ` -pause seal -in "%1" -to-self`,
-			quoted + ",0",
+			command: quoted + ` -pause seal -in "%1" -to-self`,
+			icon:    quoted + ",0",
+			// ⚠️ Sans ceci, le clic droit sur un `.ncry` ne proposait QUE de le
+			// rechiffrer, defaut rapporte par painteau. Le verbe est pose sur `*`, donc
+			// sur tous les fichiers, conteneurs compris : on obtenait un menu offrant de
+			// fabriquer un `machin.ncry.ncry` sur le seul fichier pour lequel ca n'a
+			// aucun sens, et rien pour le dechiffrer.
+			appliesTo: `NOT System.FileName:"*` + containerExt + `"`,
 		},
 		{
-			decryptKey() + `\shell\open`,
-			"",
-			quoted + ` -pause open -in "%1"`,
-			"",
+			key: decryptKey() + `\shell\open`,
+			// ⚠️ Un libelle, et son absence etait la moitie du defaut. Ce verbe est
+			// l'action par defaut du type, donc il EXISTAIT bien dans le menu, mais sans
+			// nom : Windows l'affiche alors « Ouvrir », un mot qui ne dit pas que le
+			// fichier va etre dechiffre. Entre un « Ouvrir » muet et un « Encrypt with
+			// NoiseCrypt » explicite, le menu semblait n'offrir que le rechiffrement.
+			name:    "Decrypt with NoiseCrypt",
+			command: quoted + ` -pause open -in "%1"`,
+			icon:    quoted + "," + containerIconIndex,
 		},
 		{
-			identityKey(),
+			key: identityKey(),
 			// « ici » dans le libelle, et ce mot est le correctif.
 			//
 			// L'entree s'appelait « New NoiseCrypt identity » et lancait `keygen` sans
@@ -123,12 +143,12 @@ func shellRegister(env *Env) error {
 			// servir a demande « ca m'a cree une identite, mais ou ? », ce qui est
 			// exactement la question que provoque un menu contextuel dont l'effet ne
 			// depend pas de son contexte.
-			"Create a NoiseCrypt identity here",
+			name: "Create a NoiseCrypt identity here",
 			// %V et non %1 : pour un verbe pose sur Directory\Background\shell, %1 est
 			// vide et seul %V porte le dossier. Les deux se ressemblent assez pour
 			// qu'une confusion produise un chemin vide sans rien signaler.
-			quoted + ` -pause keygen -out "%V\` + keystore.IdentityBaseName() + `"`,
-			quoted + ",0",
+			command: quoted + ` -pause keygen -out "%V\` + keystore.IdentityBaseName() + `"`,
+			icon:    quoted + ",0",
 		},
 	}
 
@@ -145,6 +165,12 @@ func shellRegister(env *Env) error {
 		}
 		if e.icon != "" {
 			if err := k.SetStringValue("Icon", e.icon); err != nil {
+				k.Close()
+				return err
+			}
+		}
+		if e.appliesTo != "" {
+			if err := k.SetStringValue("AppliesTo", e.appliesTo); err != nil {
 				k.Close()
 				return err
 			}
@@ -203,9 +229,16 @@ func shellRegister(env *Env) error {
 	notifyShell()
 
 	fmt.Fprintf(env.Stdout, "Shell integration registered, pointing at:\n  %s\n", exe)
-	fmt.Fprintln(env.Stdout, "\n  Right-click any file      Encrypt with NoiseCrypt")
-	fmt.Fprintln(env.Stdout, "  Double-click a .ncry      decrypts it")
+	// Ce resume doit rester exact. Il disait « Right-click any file » alors que le verbe
+	// s'exclut desormais des conteneurs, et ne mentionnait pas du tout le verbe de
+	// dechiffrement : un recapitulatif faux sur l'integration qu'il vient de poser est du
+	// meme ordre que tous les messages qui mentaient aujourd'hui.
+	fmt.Fprintln(env.Stdout, "\n  Right-click a file        Encrypt with NoiseCrypt, sealed for this machine")
+	fmt.Fprintln(env.Stdout, "  Right-click a "+containerExt+"       Decrypt with NoiseCrypt")
+	fmt.Fprintln(env.Stdout, "  Double-click a "+containerExt+"      decrypts it too, it is the default action")
 	fmt.Fprintln(env.Stdout, "  Right-click in a folder   creates an identity in THAT folder")
+	fmt.Fprintln(env.Stdout, "\n  Encrypting is deliberately absent from the menu of a "+containerExt+
+		": re-encrypting a container is the one thing nobody wants there.")
 	// The one real weakness of registering without an installer, said rather than
 	// discovered: the path above is absolute, so it stops working silently if the
 	// binary moves.
