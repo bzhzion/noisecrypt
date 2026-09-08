@@ -10,6 +10,25 @@ patched by CI at tag time and are never committed with a real version number.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The website's favicon and header logo were not the application's icon.** painteau asked
+  why, and the answer is that they were a cell pattern hand-drawn in the HTML, meant to
+  evoke the product. **The application's icon is a recognisable N**, built of macro cells
+  with its diagonal in the signal colour, so the site was showing a mark that represented
+  nothing.
+  - `tools/icongen` now also emits the tile as SVG, **from the same matrix** that draws
+    `assets/noisecrypt.ico`. One drawing, several outputs: a redesign of the icon takes the
+    website's logo with it instead of leaving it behind.
+  - The shape matrix and its geometry were extracted so the raster and vector paths cannot
+    diverge. **Proved harmless: both `.ico` files regenerate byte for byte identical**, so
+    the refactor changed no drawing.
+  - Two tests, and the first was proved red by hand-editing the committed SVG: one fails if
+    `web/favicon.svg` stops being what the generator produces, the other asserts the mark is
+    still an N (both uprights solid, the diagonal present and in the signal colour) rather
+    than checking a rendered size, since an accidental flattening into noise would pass any
+    size check.
+
 ### Added
 
 - **A website, `noisecrypt.breizhzion.com`**, in `web/`: presentation and manual, in French,

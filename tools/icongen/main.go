@@ -24,6 +24,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 )
 
 // The palette is the interface's, so the marks and the page look like the same product.
@@ -82,6 +83,8 @@ var marks = map[string]func(*image.NRGBA){
 func main() {
 	dir := flag.String("dir", "assets", "the directory to write the .ico files into")
 	pngDir := flag.String("png-dir", "", "also write each size as a PNG here, for review")
+	svg := flag.String("svg", filepath.Join("web", "favicon.svg"),
+		"also write the application tile as SVG here, for the website (empty to skip)")
 	flag.Parse()
 
 	for _, size := range sizes {
@@ -131,6 +134,10 @@ func main() {
 		fmt.Printf("%s: %d sizes from one %dpx drawing, %d bytes\n",
 			out, len(images), master, len(blob))
 	}
+
+	if *svg != "" {
+		writeTileSVG(*svg)
+	}
 }
 
 // reduce box-averages by a whole factor.
@@ -172,39 +179,93 @@ func reduce(src *image.NRGBA, factor int) *image.NRGBA {
 	return dst
 }
 
+// tileCells is the side of the tile's macro cell grid.
+const tileCells = 5
+
+// tileShape is the N, and it is shared with the SVG writer rather than repeated there.
+//
+// Le site vitrine affichait un motif dessine a la main dans son HTML, cense evoquer des
+// cellules, alors que l'icone de l'application est un N reconnaissable. Deux dessins pour
+// une seule marque, dont un qui ne representait rien : painteau l'a vu immediatement. Le
+// SVG du site sort donc de CETTE matrice, et une refonte de l'icone emmene le logo du site
+// avec elle au lieu de le laisser derriere.
+var tileShape = [tileCells][tileCells]int{
+	{1, 0, 0, 0, 1},
+	{1, 1, 0, 0, 1},
+	{1, 0, 1, 0, 1},
+	{1, 0, 0, 1, 1},
+	{1, 0, 0, 0, 1},
+}
+
+// tileGeometry rend la disposition de la tuile, en unites du dessin maitre.
+func tileGeometry() (offset, cell, gap int) {
+	margin := master / 6
+	span := master - 2*margin
+	cell = span / tileCells
+	offset = margin + (span-cell*tileCells)/2
+	gap = cell / 10
+	return offset, cell, gap
+}
+
+// tileColour rend la couleur d'une cellule : la diagonale porte le signal.
+func tileColour(row, col int) color.NRGBA {
+	if row == col {
+		return signal
+	}
+	return paper
+}
+
 // drawTile is the application icon: an N built out of macro cells on a filled ground.
 func drawTile(img *image.NRGBA) {
 	fill(img, img.Bounds(), ink)
+	offset, cell, gap := tileGeometry()
 
-	const cells = 5
-	margin := master / 6
-	span := master - 2*margin
-	cell := span / cells
-	offset := margin + (span-cell*cells)/2
-	gap := cell / 10
-
-	shape := [cells][cells]int{
-		{1, 0, 0, 0, 1},
-		{1, 1, 0, 0, 1},
-		{1, 0, 1, 0, 1},
-		{1, 0, 0, 1, 1},
-		{1, 0, 0, 0, 1},
-	}
-	for row := range cells {
-		for col := range cells {
-			if shape[row][col] == 0 {
+	for row := range tileCells {
+		for col := range tileCells {
+			if tileShape[row][col] == 0 {
 				continue
-			}
-			c := paper
-			if row == col {
-				c = signal
 			}
 			fill(img, image.Rect(
 				offset+col*cell, offset+row*cell,
 				offset+(col+1)*cell-gap, offset+(row+1)*cell-gap,
-			), c)
+			), tileColour(row, col))
 		}
 	}
+}
+
+// writeTileSVG ecrit la meme tuile en SVG, pour le site vitrine.
+//
+// Un SVG et pas un PNG extrait du .ico : le logo doit rester net a n'importe quelle taille
+// dans une page, et les coordonnees sont deja entieres dans le dessin maitre, donc la
+// conversion est exacte plutot qu'approchee.
+func writeTileSVG(path string) {
+	offset, cell, gap := tileGeometry()
+
+	var b strings.Builder
+	fmt.Fprintf(&b, `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 %d %d" role="img" aria-label="NoiseCrypt">`+"\n", master, master)
+	b.WriteString("  <!-- Genere par tools/icongen, ne pas modifier a la main : ce fichier\n")
+	b.WriteString("       et assets/noisecrypt.ico sortent du meme dessin, et les editer\n")
+	b.WriteString("       separement est exactement la divergence qu'on evite ici. -->\n")
+	fmt.Fprintf(&b, `  <rect width="%d" height="%d" fill="%s"/>`+"\n", master, master, hexOf(ink))
+	for row := range tileCells {
+		for col := range tileCells {
+			if tileShape[row][col] == 0 {
+				continue
+			}
+			fmt.Fprintf(&b, `  <rect x="%d" y="%d" width="%d" height="%d" fill="%s"/>`+"\n",
+				offset+col*cell, offset+row*cell, cell-gap, cell-gap, hexOf(tileColour(row, col)))
+		}
+	}
+	b.WriteString("</svg>\n")
+
+	if err := os.WriteFile(path, []byte(b.String()), 0o644); err != nil {
+		fail(err)
+	}
+	fmt.Printf("%s: la meme tuile en SVG, depuis la meme matrice\n", path)
+}
+
+func hexOf(c color.NRGBA) string {
+	return fmt.Sprintf("#%02x%02x%02x", c.R, c.G, c.B)
 }
 
 // drawSheet is the document icon: a folded page speckled with macro cells.

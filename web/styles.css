@@ -121,7 +121,9 @@ header.haut {
   color: var(--paper);
   text-decoration: none;
 }
-.marque svg { display: block; }
+/* L'icone de l'application. `display: block` supprime l'espace de ligne de base qui
+   decalerait le texte de la marque, et le rayon reprend celui du favicon a l'ecran. */
+.marque img { display: block; border-radius: 3px; }
 .marque b { font-weight: 400; }
 .marque span { color: var(--signal); }
 

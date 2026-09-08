@@ -1,22 +1,19 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="NoiseCrypt">
-  <!-- Meme langage que l'icone de l'application : une grille de cellules noires et
-       blanches, celle que le codec dessine reellement a l'ecran. Le motif est fixe et non
-       aleatoire, pour que l'icone reste identique d'une generation a l'autre. -->
-  <rect width="32" height="32" rx="7" fill="#0a0b0d"/>
-  <g fill="#e8e6e1">
-    <rect x="6" y="6" width="4" height="4"/>
-    <rect x="14" y="6" width="4" height="4"/>
-    <rect x="10" y="10" width="4" height="4"/>
-    <rect x="18" y="10" width="4" height="4"/>
-    <rect x="6" y="14" width="4" height="4"/>
-    <rect x="14" y="14" width="4" height="4"/>
-    <rect x="22" y="14" width="4" height="4"/>
-    <rect x="10" y="18" width="4" height="4"/>
-    <rect x="18" y="18" width="4" height="4"/>
-    <rect x="6" y="22" width="4" height="4"/>
-    <rect x="14" y="22" width="4" height="4"/>
-  </g>
-  <!-- Une seule cellule en ambre, la couleur de signal de l'interface : de quoi
-       reconnaitre l'icone a 16 px sans qu'elle devienne une tache. -->
-  <rect x="22" y="22" width="4" height="4" fill="#ffb020"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 768 768" role="img" aria-label="NoiseCrypt">
+  <!-- Genere par tools/icongen, ne pas modifier a la main : ce fichier
+       et assets/noisecrypt.ico sortent du meme dessin, et les editer
+       separement est exactement la divergence qu'on evite ici. -->
+  <rect width="768" height="768" fill="#0a0b0d"/>
+  <rect x="129" y="129" width="92" height="92" fill="#ffb020"/>
+  <rect x="537" y="129" width="92" height="92" fill="#e8e6e1"/>
+  <rect x="129" y="231" width="92" height="92" fill="#e8e6e1"/>
+  <rect x="231" y="231" width="92" height="92" fill="#ffb020"/>
+  <rect x="537" y="231" width="92" height="92" fill="#e8e6e1"/>
+  <rect x="129" y="333" width="92" height="92" fill="#e8e6e1"/>
+  <rect x="333" y="333" width="92" height="92" fill="#ffb020"/>
+  <rect x="537" y="333" width="92" height="92" fill="#e8e6e1"/>
+  <rect x="129" y="435" width="92" height="92" fill="#e8e6e1"/>
+  <rect x="435" y="435" width="92" height="92" fill="#ffb020"/>
+  <rect x="537" y="435" width="92" height="92" fill="#e8e6e1"/>
+  <rect x="129" y="537" width="92" height="92" fill="#e8e6e1"/>
+  <rect x="537" y="537" width="92" height="92" fill="#ffb020"/>
 </svg>
