@@ -10,6 +10,41 @@ patched by CI at tag time and are never committed with a real version number.
 
 ## [Unreleased]
 
+### Added
+
+- **A website, `noisecrypt.breizhzion.com`**, in `web/`: presentation and manual, in French,
+  deployed to axolotl on a version tag or on demand. Static HTML and CSS behind nginx, the
+  same shape as the other showcase sites of this parc, transcribed rather than reinvented.
+  - **Encryption first, video second**, deliberately: the video layer is an optional
+    transport, not the point of the tool, and a page that leads with it would sell the wrong
+    thing.
+  - Two frank panels, and they are not decorative scruple. One says plainly that this is
+    **not steganography and offers no deniability**; the other says the video channel is
+    **slow**, with the real figures. The audience of this project takes real risks, and a
+    tool that lets people believe in a protection it does not provide is worse than no tool.
+  - Explicitly attached to **Ombra**, BREIZHZION's digital support for activists and exposed
+    groups, which is the frame that explains the tool's shape: no account, no server, no
+    telemetry.
+  - **The version is not written into the page.** It lives in the git tags, is resolved by
+    `git describe` and substituted at build time, and the image refuses to build if a
+    `{{VERSION}}` placeholder survives. The stylesheet carries a **commit** fingerprint and
+    never the version number, which the parc convention forbids in a public cache-buster.
+    A guard fails the build if that substitution stops matching, because a `sed` that finds
+    nothing still exits 0.
+  - The palette is the tool's own, taken from `internal/webui/assets/app.css` rather than
+    invented. Somebody downloading from this site should recognise what they open.
+  - Fonts self-hosted from `cdn.breizhzion.com`, no third-party request, no cookie, no
+    analytics. CSP is one notch tighter than the site it was transcribed from: no
+    `unsafe-inline` in `style-src`, because this page has no inline style attribute, checked
+    rather than assumed.
+  - ⚠️ **Two defects painteau caught by looking at it**, both of which reading the code would
+    not have found. The card grid painted its container and let a `gap` draw the separators,
+    so the container colour showed through wherever no card covered it: at reading width,
+    `auto-fit` gave three columns for four cards and the empty cells became a grey block.
+    Borders moved onto the cards. And the manual claimed the profile identity is "created
+    once and used by default", which is **false**: nothing creates it for you, verified in
+    the code, and the page now opens that section by saying so.
+
 ### Fixed
 
 - **Right-clicking a `.ncry` offered only to re-encrypt it.** Reported by painteau. Two

@@ -1,0 +1,357 @@
+/* Site vitrine de NoiseCrypt.
+ *
+ * La palette n'est pas inventee : ce sont les variables de l'interface de l'outil
+ * (internal/webui/assets/app.css), reprises a l'identique. Quelqu'un qui telecharge depuis
+ * ce site doit reconnaitre ce qu'il ouvre, et une vitrine qui ne ressemble pas au produit
+ * est une promesse que le produit ne tient pas.
+ *
+ * Le motif structurant est la CELLULE, la meme que le codec dessine a l'ecran : une grille
+ * de carres noirs et blancs. Elle sert ici d'unite de rythme et de texture de fond, pas de
+ * decoration ajoutee par-dessus.
+ */
+
+:root {
+  --ink: #0a0b0d;
+  --panel: #121418;
+  --rule: #23262c;
+  --paper: #e8e6e1;
+  --dim: #9a9892;
+  --signal: #ffb020;
+  --verify: #4fd6c8;
+  --alarm: #ff7a6b;
+
+  --display: 'Fragment Mono', ui-monospace, monospace;
+  --body: 'IBM Plex Sans', system-ui, sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, monospace;
+
+  /* Le pas de la grille, comme dans l'outil. Toutes les marges en sont des multiples,
+     ce qui donne au site le rythme du codec plutot qu'une echelle arbitraire. */
+  --cell: 22px;
+  --lisible: 68ch;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+
+body {
+  margin: 0;
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--body);
+  font-size: 1.0625rem;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Texture de fond : la grille de cellules, tres attenuee. Purement decorative, donc
+   aria-hidden sur l'element et pointer-events none pour ne rien intercepter. */
+/* Arrets explicites en DEBUT ET EN FIN de chaque bande, et pas un simple
+   `linear-gradient(to right, var(--rule) 1px, transparent 1px)`.
+
+   Ce raccourci a un defaut connu : sur un facteur de zoom ou une densite d'ecran
+   fractionnaire, la limite de 1 px tombe entre deux pixels physiques, le navigateur
+   interpole sur toute la largeur de la tuile, et une ligne de 1 px etalee sur 22 px donne un
+   lavis uniforme au lieu d'une grille. `repeating-linear-gradient` avec les quatre arrets
+   nommes ne laisse rien a interpoler.
+
+   ⚠️ A ne pas confondre avec le lavis gris que painteau a signale : celui-la venait de la
+   grille de CARTES plus bas, dont le conteneur etait peint et apparaissait dans les cellules
+   vides. Le changement ici est une precaution, pas la correction de ce defaut. */
+.grille {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image:
+    repeating-linear-gradient(to right,
+      var(--rule) 0, var(--rule) 1px,
+      transparent 1px, transparent var(--cell)),
+    repeating-linear-gradient(to bottom,
+      var(--rule) 0, var(--rule) 1px,
+      transparent 1px, transparent var(--cell));
+  /* Le masque remplace l'ancienne opacite globale. Une opacite sur la couche entiere
+     eclaircissait aussi le fond noir qu'elle recouvre, ce qui participait au lavis. */
+  mask-image: radial-gradient(ellipse 120% 55% at 50% 0%, #000 0%, transparent 72%);
+  -webkit-mask-image: radial-gradient(ellipse 120% 55% at 50% 0%, #000 0%, transparent 72%);
+}
+
+.enveloppe { position: relative; z-index: 1; }
+
+.centre {
+  width: 100%;
+  max-width: calc(var(--cell) * 46);
+  margin: 0 auto;
+  padding: 0 calc(var(--cell) * 1.2);
+}
+
+/* Lien d'evitement : premier element focusable, invisible tant qu'il n'a pas le focus.
+   WCAG 2.4.1, et c'est ce qui rend un site a longues sections utilisable au clavier. */
+.evitement {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  background: var(--signal);
+  color: var(--ink);
+  padding: 0.7rem 1.1rem;
+  font-family: var(--mono);
+  font-weight: 600;
+  z-index: 100;
+}
+.evitement:focus { left: 0; }
+
+/* ---------- En-tete ---------- */
+
+header.haut {
+  border-bottom: 1px solid var(--rule);
+  padding: calc(var(--cell) * 0.9) 0;
+}
+.haut .centre { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+
+.marque {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  font-family: var(--display);
+  font-size: 1.05rem;
+  color: var(--paper);
+  text-decoration: none;
+}
+.marque svg { display: block; }
+.marque b { font-weight: 400; }
+.marque span { color: var(--signal); }
+
+nav.liens { display: flex; gap: 1.4rem; font-family: var(--mono); font-size: 0.9rem; }
+nav.liens a { color: var(--dim); text-decoration: none; padding: 0.2rem 0; border-bottom: 1px solid transparent; }
+nav.liens a:hover, nav.liens a:focus-visible { color: var(--paper); border-bottom-color: var(--signal); }
+@media (max-width: 640px) { nav.liens { display: none; } }
+
+/* ---------- Hero ---------- */
+
+.hero { padding: calc(var(--cell) * 3.5) 0 calc(var(--cell) * 2.5); }
+
+.hero h1 {
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: clamp(2.1rem, 6.5vw, 3.6rem);
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  margin: 0 0 calc(var(--cell) * 0.9);
+  max-width: 30ch;
+}
+.hero h1 em { font-style: normal; color: var(--signal); }
+
+.hero .accroche {
+  font-size: clamp(1.05rem, 2.4vw, 1.3rem);
+  color: var(--dim);
+  max-width: 56ch;
+  margin: 0 0 calc(var(--cell) * 1.6);
+}
+
+.actions { display: flex; flex-wrap: wrap; gap: 0.8rem; align-items: center; }
+
+.bouton {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--mono);
+  font-weight: 600;
+  font-size: 0.95rem;
+  text-decoration: none;
+  padding: 0.75rem 1.3rem;
+  border: 1px solid var(--signal);
+  border-radius: 2px;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.bouton.plein { background: var(--signal); color: var(--ink); }
+.bouton.plein:hover, .bouton.plein:focus-visible { background: var(--paper); border-color: var(--paper); }
+.bouton.vide { color: var(--signal); background: transparent; }
+.bouton.vide:hover, .bouton.vide:focus-visible { background: var(--signal); color: var(--ink); }
+
+.sous-actions { font-family: var(--mono); font-size: 0.82rem; color: var(--dim); margin-top: 0.9rem; }
+.sous-actions a { color: var(--dim); }
+
+/* Focus visible partout, et jamais retire. */
+a:focus-visible, button:focus-visible, summary:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 3px;
+}
+
+/* ---------- Sections ---------- */
+
+section { padding: calc(var(--cell) * 2.4) 0; border-top: 1px solid var(--rule); }
+
+.rang {
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--signal);
+  margin: 0 0 0.6rem;
+}
+
+h2 {
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: clamp(1.6rem, 4vw, 2.3rem);
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  margin: 0 0 calc(var(--cell) * 0.8);
+  max-width: 34ch;
+}
+
+h3 {
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: 1.1rem;
+  margin: calc(var(--cell) * 1.2) 0 0.5rem;
+}
+
+p { max-width: var(--lisible); }
+section > .centre > p:first-of-type { font-size: 1.1rem; }
+
+a { color: var(--signal); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+a:hover { color: var(--paper); }
+
+/* ---------- Cartes ---------- */
+
+/* ⚠️ Pas de fond sur le CONTENEUR, et c'est le correctif.
+ *
+ * La version d'avant peignait le conteneur en `--rule` et laissait un `gap: 1px` faire
+ * office de separateurs. Le motif est courant et il a un defaut que la maquette ne montre
+ * pas : le fond du conteneur apparait partout ou aucune carte ne le recouvre. Avec
+ * `auto-fit` a 260 px, la largeur de lecture donne trois colonnes pour quatre cartes, donc
+ * une seconde rangee d'une carte et de DEUX cellules vides, ou le gris s'etalait en gros
+ * rectangle. C'est ce que painteau a vu.
+ *
+ * Les bordures passent donc sur les cartes elles-memes : une cellule vide ne peut plus rien
+ * peindre, quel que soit le nombre de colonnes que la largeur decide.
+ *
+ * Et les colonnes tiennent maintenant sur `22rem`, ce qui donne deux colonnes a la largeur
+ * de lecture, donc un carre de 2 x 2 plein pour quatre cartes au lieu d'une rangee
+ * orpheline. La grille reste a une colonne des qu'il n'y a plus la place.
+ */
+.cartes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
+  gap: 1px;
+  margin: calc(var(--cell) * 1.4) 0;
+}
+.carte {
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  padding: calc(var(--cell) * 1.1);
+}
+.carte h3 { margin-top: 0; color: var(--paper); }
+.carte p { margin: 0; color: var(--dim); font-size: 0.97rem; max-width: none; }
+
+/* ---------- Encart d'honnetete ---------- */
+
+/* Un encart pour ce que l'outil NE fait PAS. Il n'est pas la par scrupule decoratif : le
+   public de ce projet prend des risques reels, et une vitrine qui laisse croire a une
+   deniabilite inexistante ferait plus de degats que pas de vitrine du tout. */
+.franchise {
+  border: 1px solid var(--alarm);
+  border-left-width: 3px;
+  background: color-mix(in srgb, var(--alarm) 7%, var(--panel));
+  padding: calc(var(--cell) * 1.1);
+  margin: calc(var(--cell) * 1.4) 0;
+}
+.franchise h3 { margin-top: 0; color: var(--alarm); }
+.franchise p:last-child { margin-bottom: 0; }
+
+/* ---------- Tableau ---------- */
+
+.defile { overflow-x: auto; margin: calc(var(--cell) * 1.2) 0; }
+table { border-collapse: collapse; width: 100%; font-size: 0.93rem; min-width: 34rem; }
+caption { text-align: left; color: var(--dim); font-size: 0.9rem; padding-bottom: 0.6rem; }
+th, td { text-align: left; padding: 0.6rem 0.9rem; border-bottom: 1px solid var(--rule); }
+th { font-family: var(--mono); font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--dim); font-weight: 600; }
+td code { font-size: 0.88rem; }
+
+/* ---------- Code ---------- */
+
+code {
+  font-family: var(--mono);
+  font-size: 0.92em;
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  padding: 0.1em 0.38em;
+}
+pre {
+  font-family: var(--mono);
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--signal);
+  padding: calc(var(--cell) * 0.9);
+  overflow-x: auto;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  margin: 0.9rem 0;
+}
+pre code { background: none; border: none; padding: 0; font-size: inherit; }
+pre .invite { color: var(--dim); user-select: none; }
+pre .note { color: var(--dim); }
+
+/* ---------- Etapes ---------- */
+
+ol.etapes { list-style: none; counter-reset: e; padding: 0; margin: calc(var(--cell) * 1.2) 0 0; }
+ol.etapes > li { counter-increment: e; position: relative; padding-left: calc(var(--cell) * 2); margin-bottom: calc(var(--cell) * 1.1); max-width: var(--lisible); }
+ol.etapes > li::before {
+  content: counter(e, decimal-leading-zero);
+  position: absolute;
+  left: 0;
+  top: 0.1em;
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  color: var(--signal);
+  border: 1px solid var(--rule);
+  padding: 0.15rem 0.4rem;
+}
+ol.etapes h3 { margin: 0 0 0.3rem; }
+ol.etapes p { margin: 0; color: var(--dim); }
+
+/* ---------- Details ---------- */
+
+details { border: 1px solid var(--rule); background: var(--panel); margin: 0.7rem 0; }
+summary { padding: 0.8rem calc(var(--cell) * 0.9); cursor: pointer; font-family: var(--mono); font-size: 0.93rem; }
+summary:hover { color: var(--signal); }
+details > div { padding: 0 calc(var(--cell) * 0.9) calc(var(--cell) * 0.7); }
+details p { margin-top: 0; color: var(--dim); }
+
+/* ---------- Ombra ---------- */
+
+.ombra {
+  border: 1px solid var(--verify);
+  border-left-width: 3px;
+  background: color-mix(in srgb, var(--verify) 6%, var(--panel));
+  padding: calc(var(--cell) * 1.3);
+  margin: calc(var(--cell) * 1.2) 0 0;
+}
+.ombra h3 { margin-top: 0; color: var(--verify); }
+.ombra p { color: var(--paper); }
+
+/* ---------- Pied ---------- */
+
+footer {
+  border-top: 1px solid var(--rule);
+  padding: calc(var(--cell) * 1.8) 0 calc(var(--cell) * 2.4);
+  color: var(--dim);
+  font-size: 0.9rem;
+}
+footer p { max-width: var(--lisible); }
+footer a { color: var(--dim); }
+footer a:hover { color: var(--signal); }
+.pied-liens { display: flex; flex-wrap: wrap; gap: 1.2rem; font-family: var(--mono); font-size: 0.85rem; margin-bottom: calc(var(--cell) * 0.9); }
+
+/* ---------- Preference de contraste ---------- */
+
+@media (prefers-contrast: more) {
+  :root { --dim: #c9c7c1; --rule: #3a3e46; }
+  .grille { display: none; }
+}

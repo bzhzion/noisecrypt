@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+
+# Meme posture que les autres vitrines du parc : le site est fait pour etre trouve, et
+# l'entrainement de modeles sur son contenu n'est pas accorde. `ai-input=yes` laisse une
+# reponse d'assistant citer la page, ce qui sert le lecteur ; `ai-train=no` refuse qu'elle
+# serve de matiere premiere.
+Content-Signal: search=yes, ai-input=yes, ai-train=no
+
+Sitemap: https://noisecrypt.breizhzion.com/sitemap.xml

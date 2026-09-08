@@ -1,0 +1,101 @@
+name: Deploy the website
+
+# Le site vitrine, sur noisecrypt.breizhzion.com. Separe de `release.yml`, qui publie les
+# binaires : les deux partent du meme tag mais n'ont ni la meme duree ni les memes secrets,
+# et un site qui ne se deploie pas ne doit pas faire echouer une release de binaires.
+#
+# Deux regles de la convention de parc, reprises telles quelles :
+#
+#   Rien ne se deploie sur un push de branche. Un deploiement part d'un tag vX.Y.Z ou d'un
+#   declenchement manuel. Pousser une correction de formulation sur main ne doit pas partir
+#   en production.
+#
+#   Volontairement sans filtre de chemin : GitHub combine (tags) ET paths, ce qui rend le
+#   declencheur sur tag imprevisible des qu'un filtre de chemin est present.
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*.*.*']
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, linux, x64, docker]
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Sans l'historique complet, aucun tag n'est visible et `git describe` rend une
+          # erreur : la page annoncerait alors « dev » comme numero de version.
+          fetch-depth: 0
+
+      - name: Resoudre la version et la SHA
+        id: vars
+        run: |
+          set -euo pipefail
+          version="$(git describe --tags --abbrev=0 --match 'v[0-9]*' | sed 's/^v//')"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "sha_short=$(echo "${{ github.sha }}" | cut -c1-7)" >> "$GITHUB_OUTPUT"
+          echo "Site construit pour la version $version."
+
+      - name: Login GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & push (vitrine web)
+        uses: docker/build-push-action@v5
+        with:
+          context: ./web
+          push: true
+          build-args: |
+            GIT_SHA=${{ steps.vars.outputs.sha_short }}
+            APP_VERSION=${{ steps.vars.outputs.version }}
+          tags: |
+            ghcr.io/bzhzion/noisecrypt-web:latest
+            ghcr.io/bzhzion/noisecrypt-web:${{ github.sha }}
+
+      - name: Deploy sur le serveur
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.AXOLOTL_HOST }}
+          username: ${{ secrets.AXOLOTL_USER }}
+          key: ${{ secrets.AXOLOTL_SSH_KEY }}
+          script: |
+            echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io -u KaO --password-stdin
+            docker pull ghcr.io/bzhzion/noisecrypt-web:latest
+            cd /opt/noisecrypt
+            docker compose up -d
+            docker image prune -f
+
+      - name: Verifier ce qui est reellement servi
+        # Un `docker compose up -d` qui rend 0 ne prouve pas qu'une page est servie, et le
+        # numero de version substitue au build ne se verifie que sur le rendu. Controle
+        # depuis le serveur, sur l'ecoute locale : le tunnel Cloudflare est un autre saut,
+        # et le faire entrer ici melerait deux pannes differentes.
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.AXOLOTL_HOST }}
+          username: ${{ secrets.AXOLOTL_USER }}
+          key: ${{ secrets.AXOLOTL_SSH_KEY }}
+          script: |
+            set -e
+            code="$(curl -s -o /tmp/nc-web.html -w '%{http_code}' http://127.0.0.1:8169/)"
+            if [ "$code" != "200" ]; then
+              echo "::error::le site repond $code sur 127.0.0.1:8169"
+              exit 1
+            fi
+            if grep -q '{{VERSION}}' /tmp/nc-web.html; then
+              echo "::error::la page servie contient encore le gabarit de version"
+              exit 1
+            fi
+            if ! grep -q 'Version ${{ steps.vars.outputs.version }}' /tmp/nc-web.html; then
+              echo "::error::la page servie n'annonce pas la version ${{ steps.vars.outputs.version }}"
+              exit 1
+            fi
+            echo "Le site sert bien la version ${{ steps.vars.outputs.version }}."

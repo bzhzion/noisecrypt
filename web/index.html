@@ -1,0 +1,456 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NoiseCrypt : chiffrer un fichier, et le faire voyager en vidéo</title>
+<meta name="description" content="NoiseCrypt chiffre n'importe quel fichier dans un conteneur post-quantique, et sait transformer ce conteneur en vidéo ordinaire pour passer par une plateforme qui ne laisse rien d'autre. Outil libre d'accès de l'association BREIZHZION, rattaché au projet Ombra.">
+<meta name="theme-color" content="#0a0b0d">
+<meta property="og:type" content="website">
+<meta property="og:title" content="NoiseCrypt : chiffrer un fichier, et le faire voyager en vidéo">
+<meta property="og:description" content="Chiffrement hybride post-quantique, et un conteneur qui survit à une plateforme qui réencode tout ce qu'on lui donne. Un projet BREIZHZION, rattaché à Ombra.">
+<meta property="og:url" content="https://noisecrypt.breizhzion.com/">
+<meta property="og:locale" content="fr_FR">
+<meta name="twitter:card" content="summary">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="canonical" href="https://noisecrypt.breizhzion.com/">
+<link rel="preconnect" href="https://cdn.breizhzion.com" crossorigin>
+<link rel="stylesheet" href="https://cdn.breizhzion.com/fonts/noisecrypt-fonts.css">
+<link rel="stylesheet" href="styles.css">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "NGO",
+      "@id": "https://breizhzion.com/#organization",
+      "name": "BREIZHZION",
+      "url": "https://breizhzion.com"
+    },
+    {
+      "@type": "WebSite",
+      "@id": "https://noisecrypt.breizhzion.com/#website",
+      "url": "https://noisecrypt.breizhzion.com",
+      "name": "NoiseCrypt",
+      "inLanguage": "fr-FR",
+      "publisher": { "@id": "https://breizhzion.com/#organization" }
+    },
+    {
+      "@type": "SoftwareApplication",
+      "@id": "https://noisecrypt.breizhzion.com/#logiciel",
+      "name": "NoiseCrypt",
+      "applicationCategory": "SecurityApplication",
+      "operatingSystem": "Windows, macOS, Linux",
+      "softwareVersion": "{{VERSION}}",
+      "url": "https://noisecrypt.breizhzion.com",
+      "downloadUrl": "https://dl.breizhzion.com/noisecrypt/NoiseCrypt-Setup-amd64.exe",
+      "codeRepository": "https://github.com/bzhzion/noisecrypt",
+      "license": "https://github.com/bzhzion/noisecrypt/blob/main/LICENSE.md",
+      "author": { "@id": "https://breizhzion.com/#organization" },
+      "offers": { "@type": "Offer", "price": "0", "priceCurrency": "EUR" }
+    }
+  ]
+}
+</script>
+</head>
+<body>
+
+<div class="grille" aria-hidden="true"></div>
+
+<div class="enveloppe">
+
+<a class="evitement" href="#contenu">Aller au contenu</a>
+
+<header class="haut">
+  <div class="centre">
+    <a class="marque" href="/">
+      <svg width="22" height="22" viewBox="0 0 6 6" role="img" aria-label="Logo NoiseCrypt">
+        <rect width="6" height="6" fill="#0a0b0d"/>
+        <g fill="#e8e6e1">
+          <rect x="0" y="0" width="1" height="1"/><rect x="2" y="0" width="1" height="1"/><rect x="5" y="0" width="1" height="1"/>
+          <rect x="1" y="1" width="1" height="1"/><rect x="4" y="1" width="1" height="1"/>
+          <rect x="0" y="2" width="1" height="1"/><rect x="2" y="2" width="1" height="1"/><rect x="3" y="2" width="1" height="1"/>
+          <rect x="1" y="3" width="1" height="1"/><rect x="5" y="3" width="1" height="1"/>
+          <rect x="0" y="4" width="1" height="1"/><rect x="3" y="4" width="1" height="1"/><rect x="4" y="4" width="1" height="1"/>
+          <rect x="2" y="5" width="1" height="1"/><rect x="5" y="5" width="1" height="1"/>
+        </g>
+      </svg>
+      <b>Noise<span>Crypt</span></b>
+    </a>
+    <nav class="liens" aria-label="Sections">
+      <a href="#chiffrement">Chiffrement</a>
+      <a href="#video">Vidéo</a>
+      <a href="#manuel">Manuel</a>
+      <a href="#ombra">Ombra</a>
+    </nav>
+  </div>
+</header>
+
+<main id="contenu">
+
+<div class="hero centre">
+  <h1>Chiffrez un fichier. Récupérez-le, <em>octet pour octet</em>.</h1>
+  <p class="accroche">
+    NoiseCrypt met n'importe quel fichier dans un conteneur chiffré. Et quand le seul
+    chemin disponible est une plateforme qui n'accepte que de la vidéo, il sait faire de ce
+    conteneur une vidéo ordinaire, qui survit au réencodage et rend le fichier intact à
+    l'arrivée.
+  </p>
+  <div class="actions">
+    <a class="bouton plein" href="#telecharger">Télécharger</a>
+    <a class="bouton vide" href="https://github.com/bzhzion/noisecrypt">Lire le code source</a>
+  </div>
+  <p class="sous-actions">
+    Version {{VERSION}}. Windows, macOS, Linux. Gratuit, code ouvert à la lecture sous
+    <a href="https://github.com/bzhzion/noisecrypt/blob/main/LICENSE.md">licence BZ-1.1</a>.
+    Aucun compte, aucune inscription, aucun serveur.
+  </p>
+</div>
+
+<section id="chiffrement">
+  <div class="centre">
+    <p class="rang">01 / L'essentiel</p>
+    <h2>Le chiffrement, d'abord</h2>
+    <p>
+      C'est ce que fait NoiseCrypt, et tout le reste en découle. Un fichier entre, un
+      conteneur <code>.ncry</code> sort, et personne d'autre que le destinataire ne peut
+      l'ouvrir. La partie vidéo est un mode de transport optionnel, pas la raison d'être de
+      l'outil.
+    </p>
+
+    <div class="cartes">
+      <div class="carte">
+        <h3>Hybride post-quantique</h3>
+        <p>
+          X25519 combiné à ML-KEM-768, les deux secrets versés dans une seule dérivation de
+          clé. Le résultat tient tant que l'un des deux tient. Miser sur le seul réseau
+          euclidien serait parier sur une hypothèse jeune ; miser sur le seul X25519 serait
+          parier contre un ordinateur quantique.
+        </p>
+      </div>
+      <div class="carte">
+        <h3>Scellé par tronçons</h3>
+        <p>
+          Le contenu n'est pas authentifié par une seule empreinte globale mais tronçon par
+          tronçon. Un octet abîmé n'annule pas tout le fichier, ce qui est la condition pour
+          que la couche de correction d'erreurs de la vidéo puisse faire son travail.
+        </p>
+      </div>
+      <div class="carte">
+        <h3>Rien ne fuit en clair</h3>
+        <p>
+          Le nom du fichier, sa taille d'origine et sa date sont à l'intérieur du chiffré,
+          pas dans l'en-tête. Un test du projet échoue si le nom du fichier apparaît dans
+          les octets scellés, pour que ce ne soit pas seulement une intention.
+        </p>
+      </div>
+      <div class="carte">
+        <h3>Une identité, ou une phrase</h3>
+        <p>
+          Chiffrez pour une identité publique, la vôtre ou celle d'un correspondant, ou sous
+          une phrase de passe protégée par Argon2id. Un clic droit sur un fichier le scelle
+          pour l'identité de votre machine, et un double-clic le rouvre sans rien vous
+          demander.
+        </p>
+      </div>
+    </div>
+
+    <div class="franchise">
+      <h3>Ce que NoiseCrypt n'est pas</h3>
+      <p>
+        <strong>Ce n'est pas de la stéganographie, et il n'y a aucune déniabilité.</strong>
+        Une vidéo NoiseCrypt ressemble exactement à ce qu'elle est : un motif de carrés qui
+        n'a rien d'une vidéo ordinaire. Elle ne cache pas qu'un fichier chiffré circule, elle
+        le fait circuler malgré un canal qui n'accepte que de la vidéo. Si votre modèle de
+        menace exige que personne ne puisse constater l'envoi, cet outil n'est pas le bon.
+      </p>
+      <p>
+        Nous le disons ici plutôt que de le laisser découvrir : le public de ce projet prend
+        des risques réels, et un outil qui laisse croire à une protection qu'il n'offre pas
+        est plus dangereux que pas d'outil du tout.
+      </p>
+    </div>
+  </div>
+</section>
+
+<section id="video">
+  <div class="centre">
+    <p class="rang">02 / Le transport</p>
+    <h2>Et ensuite, la vidéo</h2>
+    <p>
+      Certaines plateformes refusent les pièces jointes, filtrent les archives, ou ne
+      laissent passer que des images et des vidéos. NoiseCrypt dessine alors le conteneur
+      chiffré sous forme de carrés noirs et blancs, image par image, et le muxe en
+      <code>.mp4</code>. Vous téléversez une vidéo. Vous la retéléchargez plus tard, et le
+      fichier d'origine revient.
+    </p>
+
+    <h3>Pourquoi ça survit au réencodage</h3>
+    <p>
+      Une plateforme recompresse, redimensionne et ajoute des bandes noires à tout ce qu'on
+      lui donne. Un canal vidéo abîme donc les données de deux façons sans rapport, et le
+      codec répond aux deux : une correction d'erreurs à deux étages, une somme de contrôle
+      par image, une démodulation qui pondère chaque cellule par sa confiance, et une
+      détection de cadre qui retrouve la grille même après un recadrage.
+    </p>
+
+    <div class="defile">
+      <table>
+        <caption>Les trois canaux disponibles, et ce qu'ils coûtent réellement.</caption>
+        <thead>
+          <tr>
+            <th scope="col">Canal</th>
+            <th scope="col">Image</th>
+            <th scope="col">Cellule</th>
+            <th scope="col">Débit utile</th>
+            <th scope="col">Éprouvé</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>archive</code></td>
+            <td>1920 x 1080</td>
+            <td>16 px</td>
+            <td>environ 21 Kio/s</td>
+            <td>local, jusqu'à CRF 23</td>
+          </tr>
+          <tr>
+            <td><code>social</code></td>
+            <td>1080 x 1920</td>
+            <td>30 px</td>
+            <td>environ 3,6 Kio/s</td>
+            <td>YouTube, 9 rendus</td>
+          </tr>
+          <tr>
+            <td><code>social-hd</code></td>
+            <td>1080 x 1920</td>
+            <td>20 px</td>
+            <td>environ 8 Kio/s</td>
+            <td>YouTube</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="franchise">
+      <h3>C'est lent, et il faut le savoir avant</h3>
+      <p>
+        Sur le canal le plus robuste, un mébioctet de fichier devient environ cinq minutes de
+        vidéo. Cinquante kilooctets font quinze secondes. Ce n'est pas un défaut à corriger,
+        c'est le prix d'un canal qui doit survivre à une recompression : plus une cellule est
+        grande, plus elle résiste, et moins il en tient à l'écran.
+      </p>
+      <p>
+        L'outil vous dit ce que ça va coûter <em>avant</em> de le dépenser, avec
+        <code>noisecrypt estimate</code> ou le bouton « What will it cost » de l'interface.
+        Apprendre au bout de trois heures que son fichier fait trois heures de vidéo n'aide
+        personne.
+      </p>
+    </div>
+
+    <h3>Vérifié contre une vraie plateforme</h3>
+    <p>
+      Le canal <code>social</code> n'est pas éprouvé en théorie. Un fichier a été mis en
+      ligne sur YouTube, récupéré dans ses neuf rendus successifs, et il est revenu
+      <strong>identique octet pour octet dans les neuf cas</strong>, y compris le rendu en
+      144 x 256 et la version AV1 à un vingtième du débit d'origine. Depuis la version 0.5.0,
+      il suffit de coller l'adresse de la vidéo pour que l'outil la récupère et la décode
+      d'un coup, si <code>yt-dlp</code> est installé.
+    </p>
+  </div>
+</section>
+
+<section id="manuel">
+  <div class="centre">
+    <p class="rang">03 / Le manuel</p>
+    <h2>Installer, puis s'en servir</h2>
+
+    <h3 id="telecharger">Installer</h3>
+    <p>
+      L'installateur Windows est signé, ne demande jamais les droits administrateur et
+      s'installe pour votre seul compte. Rien n'est envoyé nulle part, et il n'y a aucun
+      compte à créer.
+    </p>
+    <div class="actions">
+      <a class="bouton plein" href="https://dl.breizhzion.com/noisecrypt/NoiseCrypt-Setup-amd64.exe">Windows (x64)</a>
+      <a class="bouton vide" href="https://dl.breizhzion.com/noisecrypt/NoiseCrypt-Setup-arm64.exe">Windows (ARM64)</a>
+      <a class="bouton vide" href="https://dl.breizhzion.com/noisecrypt/noisecrypt-darwin-arm64">macOS (Apple Silicon)</a>
+      <a class="bouton vide" href="https://dl.breizhzion.com/noisecrypt/noisecrypt-darwin-amd64">macOS (Intel)</a>
+    </div>
+
+    <details>
+      <summary>Linux, par le dépôt apt</summary>
+      <div>
+        <pre><code><span class="invite">$ </span>sudo curl -fsSL https://apt.breizhzion.com/KEY.gpg -o /usr/share/keyrings/breizhzion.asc
+<span class="invite">$ </span>echo "deb [signed-by=/usr/share/keyrings/breizhzion.asc] https://apt.breizhzion.com stable main" \
+    | sudo tee /etc/apt/sources.list.d/breizhzion.list
+<span class="invite">$ </span>sudo apt update &amp;&amp; sudo apt install noisecrypt</code></pre>
+        <p>
+          La clé est servie en ASCII armoré et déposée telle quelle en <code>.asc</code>,
+          format qu'<code>apt</code> lit directement.
+        </p>
+      </div>
+    </details>
+
+    <details>
+      <summary>Vérifier ce que vous avez téléchargé</summary>
+      <div>
+        <p>
+          Chaque version publie un fichier <code>SHA256SUMS</code> à côté de ses binaires, et
+          les installateurs Windows sont signés au nom de BREIZHZION. Sur un outil de
+          chiffrement, vérifier l'empreinte de ce qu'on installe n'est pas de la paranoïa
+          décorative.
+        </p>
+        <pre><code><span class="invite">$ </span>sha256sum -c SHA256SUMS --ignore-missing</code></pre>
+      </div>
+    </details>
+
+    <h3>Commencez par créer votre identité</h3>
+    <p>
+      <strong>Rien ne la crée pour vous.</strong> Tant que vous ne l'avez pas faite, l'outil
+      retombe sur une phrase de passe et vous le dit. C'est un geste unique, et le fichier
+      obtenu est le seul moyen d'ouvrir tout ce qui sera chiffré pour lui : sauvegardez-le.
+    </p>
+    <pre><code><span class="invite">$ </span>noisecrypt keygen</code></pre>
+    <p class="sous-actions">
+      Dans l'interface graphique, le bouton « Install on disk » de la section
+      « This machine's identity » fait la même chose, et vous montre le chemin exact avant
+      d'écrire quoi que ce soit.
+    </p>
+
+    <h3>Ensuite, trois gestes sans ouvrir de terminal</h3>
+    <ol class="etapes">
+      <li>
+        <h3>Clic droit sur un fichier</h3>
+        <p>
+          « Encrypt with NoiseCrypt » le scelle pour l'identité de votre machine et écrit un
+          <code>.ncry</code> à côté. Aucune phrase de passe à inventer. Si votre machine n'a
+          pas encore d'identité, l'outil vous le dit et retombe sur une phrase de passe.
+        </p>
+      </li>
+      <li>
+        <h3>Double-clic sur un .ncry</h3>
+        <p>
+          Le fichier d'origine revient, sans rien vous demander, parce que l'identité de la
+          machine suffit à l'ouvrir. Un clic droit propose la même chose sous
+          « Decrypt with NoiseCrypt ».
+        </p>
+      </li>
+      <li>
+        <h3>Clic droit dans un dossier</h3>
+        <p>
+          « Create a NoiseCrypt identity here » crée une identité <em>dans ce dossier</em>,
+          pour la mettre sur une clé USB par exemple. Attention, ce n'est pas celle que la
+          machine utilisera d'elle-même : l'outil vous le signale, et il faut alors la
+          désigner avec <code>-identity</code>, ou la déplacer à l'emplacement par défaut.
+        </p>
+      </li>
+    </ol>
+
+    <h3>L'interface graphique</h3>
+    <p>
+      <code>noisecrypt gui</code> ouvre une page dans votre navigateur, servie par le
+      programme lui-même sur l'interface de bouclage. Elle n'est pas joignable depuis le
+      réseau, rien n'y est chargé depuis l'extérieur, et fermer le terminal l'arrête. Sous
+      Windows, le raccourci du menu Démarrer fait exactement ça.
+    </p>
+
+    <h3>La ligne de commande</h3>
+    <p>
+      Tout ce que fait l'interface se fait aussi au terminal, et quelques réglages n'existent
+      que là : le coût du calcul appliqué à une phrase de passe, la qualité de l'encodeur
+      vidéo, et la mesure de ce qu'un canal supporte.
+    </p>
+    <pre><code><span class="invite">$ </span>noisecrypt seal -in rapport.pdf -to-self        <span class="note"># chiffrer pour soi</span>
+<span class="invite">$ </span>noisecrypt open -in rapport.pdf.ncry            <span class="note"># et le rouvrir</span>
+<span class="invite">$ </span>noisecrypt keygen                               <span class="note"># creer son identite</span>
+<span class="invite">$ </span>noisecrypt identity                             <span class="note"># voir sa moitie publique</span>
+<span class="invite">$ </span>noisecrypt estimate -in gros.zip                <span class="note"># ce que la video coutera</span>
+<span class="invite">$ </span>noisecrypt encode -in gros.zip -profile social  <span class="note"># fabriquer la video</span>
+<span class="invite">$ </span>noisecrypt decode -url "https://..."            <span class="note"># recuperer depuis une adresse</span></code></pre>
+    <p class="sous-actions">
+      <code>noisecrypt -help</code> liste tout, et <code>noisecrypt &lt;commande&gt; -h</code>
+      détaille une commande. FFmpeg n'est nécessaire que pour les commandes vidéo ; tout le
+      chiffrement fonctionne sans rien d'autre d'installé.
+    </p>
+
+    <details>
+      <summary>Envoyer un fichier à quelqu'un d'autre</summary>
+      <div>
+        <p>
+          Demandez-lui sa moitié publique, celle que <code>noisecrypt identity</code>
+          affiche. Chiffrez pour elle avec <code>-to</code>, et signez avec
+          <code>-sign</code> si vous voulez qu'il puisse prouver que le conteneur vient bien
+          de vous.
+        </p>
+        <pre><code><span class="invite">$ </span>noisecrypt seal -in dossier.zip -to leur-identite.ncrypub -sign ~/.noisecrypt/identity.ncrykey</code></pre>
+        <p>
+          Lisez-vous l'empreinte de vos identités de vive voix, ou par un autre canal que
+          celui qui a servi à les échanger. C'est tout l'intérêt d'une empreinte.
+        </p>
+      </div>
+    </details>
+  </div>
+</section>
+
+<section id="ombra">
+  <div class="centre">
+    <p class="rang">04 / Le cadre</p>
+    <h2>Un outil du projet Ombra</h2>
+    <p>
+      NoiseCrypt est développé par l'association <strong>BREIZHZION</strong> dans le cadre
+      d'<strong>Ombra</strong>, notre accompagnement numérique des militants et des groupes
+      exposés. Ombra propose des micro-formations courtes pour apprendre à se servir soi-même
+      des outils qui protègent, et un accompagnement au déploiement pour qui préfère ne pas
+      tout configurer seul.
+    </p>
+    <p>
+      C'est ce cadre qui explique la forme de cet outil : aucun compte, aucun serveur, aucune
+      télémétrie, rien à faire confiance à part le code, et une insistance à dire ce qu'il ne
+      protège pas. Un outil de sécurité qui promet trop est un outil qui met en danger.
+    </p>
+    <div class="ombra">
+      <h3>Se faire accompagner</h3>
+      <p>
+        Si vous voulez apprendre à protéger vos données et votre anonymat, ou faire chiffrer
+        et configurer votre matériel, Ombra est là pour ça. Le premier contact se fait par
+        Signal, et ne transmettez aucune information identifiante avant cet échange chiffré.
+      </p>
+      <p>
+        <a href="https://ombra.breizhzion.com">Découvrir Ombra</a>
+      </p>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="centre">
+    <div class="pied-liens">
+      <a href="https://github.com/bzhzion/noisecrypt">Code source</a>
+      <a href="https://github.com/bzhzion/noisecrypt/blob/main/CHANGELOG.md">Journal des versions</a>
+      <a href="https://github.com/bzhzion/noisecrypt/blob/main/docs/FORMAT.md">Spécification du format</a>
+      <a href="https://github.com/bzhzion/noisecrypt/issues">Signaler un problème</a>
+      <a href="https://ombra.breizhzion.com">Ombra</a>
+      <a href="https://breizhzion.com">BREIZHZION</a>
+    </div>
+    <p>
+      Ce site ne dépose aucun cookie, ne charge aucun script tiers et ne mesure rien. Les
+      polices sont servies depuis notre propre domaine.
+    </p>
+    <p>
+      NoiseCrypt est distribué sous
+      <a href="https://github.com/bzhzion/noisecrypt/blob/main/LICENSE.md">licence BZ-1.1</a> :
+      le code est ouvert à la lecture et à l'étude, l'usage personnel est libre, et l'usage
+      commercial est réservé à l'association. Ce n'est pas une licence open source au sens de
+      l'OSI, et nous préférons le dire clairement.
+    </p>
+    <p>© 2026 BREIZHZION</p>
+  </div>
+</footer>
+
+</div>
+
+</body>
+</html>

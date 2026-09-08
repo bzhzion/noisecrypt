@@ -1,0 +1,11 @@
+services:
+  noisecrypt-web:
+    image: ghcr.io/bzhzion/noisecrypt-web:latest
+    container_name: noisecrypt-web
+    restart: unless-stopped
+    ports:
+      # 8169, et le port a ete releve SUR LE SERVEUR et non dans la documentation. Le
+      # tableau des ports d'axolotl a deja ete en retard sur la realite, ce qui a coute un
+      # `docker-proxy` tue par erreur et le connecteur MCP casse. 8168 etait pris par
+      # `maeil-web`, absent de ce tableau au moment du releve.
+      - "127.0.0.1:8169:80"
