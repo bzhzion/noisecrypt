@@ -14,6 +14,9 @@ identical to the last bit.
 It is encrypted the whole way, and it is built to survive being crushed by whatever the
 video travelled through.
 
+There is a website too, in French, with the presentation and the manual:
+**[noisecrypt.breizhzion.com](https://noisecrypt.breizhzion.com)**.
+
 > We uploaded files to YouTube as unlisted Shorts. YouTube re-encoded each one into around
 > ten different versions, shrinking one of them from 1080 pixels wide down to 144 and
 > compressing it to a fraction of its original bitrate.
@@ -73,9 +76,19 @@ You do not need to know anything, and you do not need to type a command.
 and never asks for administrator, because nothing it does needs it. When it finishes you
 have three things you did not have before:
 
-- **Right-click any file → Encrypt with NoiseCrypt.**
-- **Double-click a `.ncry` file** and it decrypts.
-- **Right-click inside a folder → New NoiseCrypt identity.**
+- **Right-click a file → Encrypt with NoiseCrypt.** It seals the file for this machine's
+  own identity, so there is no passphrase to invent. Deliberately absent from the menu of a
+  `.ncry`: re-encrypting a container is the one thing nobody wants there.
+- **Right-click a `.ncry` → Decrypt with NoiseCrypt**, or just double-click it. Either way
+  the original comes back without asking you anything, because the machine's identity is
+  enough to open it.
+- **Right-click inside a folder → Create a NoiseCrypt identity here.** That one writes an
+  identity *in that folder*, for a USB stick say, and the program tells you it is not the
+  one this machine will reach for on its own.
+
+**Create your identity first, because nothing creates it for you.** Run
+`noisecrypt keygen`, or use the **Install on disk** button in the interface. Until you do,
+the right-click still works but falls back to asking for a passphrase, and it says so.
 
 **On macOS or Linux**, download the file for your system from the same page. That is the
 whole installation: one file, nothing to set up, no account, no configuration.

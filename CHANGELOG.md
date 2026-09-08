@@ -10,6 +10,16 @@ patched by CI at tag time and are never committed with a real version number.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The README described the three right-click gestures as they were this morning.** It named
+  the folder entry "New NoiseCrypt identity", a label that changed to "Create a NoiseCrypt
+  identity here", did not mention the new **Decrypt with NoiseCrypt** verb, and did not say
+  that encrypting now seals for the machine's own identity. All three were changed today, and
+  the public front door still advertised the old behaviour.
+  - It now also says the thing the website had to be corrected on: **create your identity
+    first, because nothing creates it for you.**
+
 ### Added
 
 - **`icongen -thumb` writes the tile as a portfolio thumbnail**, so the entry on
