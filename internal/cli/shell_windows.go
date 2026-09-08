@@ -92,7 +92,18 @@ func shellRegister(env *Env) error {
 		{
 			encryptKey(),
 			"Encrypt with NoiseCrypt",
-			quoted + ` -pause seal -in "%1"`,
+			// ⚠️ `-to-self`, et c'est ce qui rend les deux clics symetriques. Le
+			// double-clic qui dechiffre consulte DEJA l'identite de cette machine sur un
+			// conteneur hybride, sans rien demander ; chiffrer sous une phrase de passe
+			// obligeait donc a en inventer une puis a la retaper pour rouvrir, pour un
+			// fichier qu'on chiffre en general pour soi. Le repli sur la phrase de passe
+			// reste, il sert quand la machine n'a pas encore d'identite.
+			//
+			// Porte ici et pas dans un `seal` nu : la ligne de commande garde son
+			// comportement, changer ce qu'elle produit sans le dire fabriquerait des
+			// conteneurs ouvrables sur une seule machine a la place de conteneurs
+			// ouvrables partout.
+			quoted + ` -pause seal -in "%1" -to-self`,
 			quoted + ",0",
 		},
 		{

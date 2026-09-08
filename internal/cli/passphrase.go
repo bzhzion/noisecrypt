@@ -54,6 +54,14 @@ func (s *passphraseSource) registerAs(fs interface {
 // ErrNoPassphrase is returned when a passphrase is required and none could be read.
 var ErrNoPassphrase = errors.New("no passphrase supplied")
 
+// ErrPassphraseTooShort is returned when a passphrase was typed but is under the floor.
+//
+// A sentinel rather than a bare message because the interactive retry has to tell two
+// things apart: a saisie the person can correct by typing again, and a read that failed
+// because there is nobody there. Retrying the second would be an infinite wait with
+// nothing to interrupt it.
+var ErrPassphraseTooShort = errors.New("passphrase too short")
+
 // MinPassphraseLength, deplacee dans crypt : l'interface applique le meme plancher et
 // ne peut pas lire une constante de ce paquet, cli important webui.
 const MinPassphraseLength = crypt.MinPassphraseLength
@@ -145,11 +153,39 @@ func (s *passphraseSource) accept(b []byte) ([]byte, error) {
 		return nil, ErrNoPassphrase
 	}
 	if s.confirm && len(b) < MinPassphraseLength {
-		return nil, fmt.Errorf("passphrase is %d bytes, the minimum for sealing is %d; "+
+		return nil, fmt.Errorf("%w: it is %d bytes, the minimum for sealing is %d; "+
 			"the Argon2id cost multiplies the price of searching a keyspace, it does not create one",
-			len(b), MinPassphraseLength)
+			ErrPassphraseTooShort, len(b), MinPassphraseLength)
 	}
 	return b, nil
+}
+
+// resolveInteractif reads a passphrase and, when somebody is there to answer, asks again
+// instead of giving up on an input they can simply retype.
+//
+// ⚠️ Le defaut que ceci corrige a ete rapporte par painteau apres un clic droit
+// « encrypt » : l'invite s'affichait, il validait a vide, et la fenetre annoncait
+// « no passphrase supplied » puis se fermait. Aucune seconde chance, et un message ecrit
+// pour quelqu'un a un shell servi a quelqu'un qui vient de cliquer dans un menu
+// contextuel. Exactement le defaut que `demanderPhrase` decrit longuement pour `keygen`,
+// laisse intact sur les deux verbes les plus utilises, chiffrer et dechiffrer. Corriger un
+// motif a un endroit et pas aux autres est la vraie lecon.
+//
+// Ne boucle QUE sur une erreur de saisie. Une lecture qui echoue parce que l'entree est
+// fermee rend son erreur immediatement : la redemander serait une attente infinie sans
+// rien pour l'interrompre.
+func (s *passphraseSource) resolveInteractif(env *Env, prompt string) ([]byte, error) {
+	for {
+		p, err := s.resolve(env, prompt)
+		if err == nil {
+			return p, nil
+		}
+		corrigeable := errors.Is(err, ErrNoPassphrase) || errors.Is(err, ErrPassphraseTooShort)
+		if !corrigeable || !env.Interactive || !s.fromHuman(env) {
+			return nil, err
+		}
+		fmt.Fprintf(env.Stderr, "\n%v\n\n", err)
+	}
 }
 
 func readAll(r any) ([]byte, error) {
@@ -197,6 +233,10 @@ func readPassphraseFromTerminal(prompt string) ([]byte, error) {
 //
 // Shared by the passphrase reader, which cannot prompt without one, and by the pause that
 // keeps an Explorer-launched console open, which would hang without one.
-func stdinIsTerminal() bool {
+// Une variable et non une fonction, pour que les tests puissent l'outrepasser. Sans ce
+// point de couture, la boucle de resolveInteractif est intestable : `fromHuman` exige un
+// terminal, une suite de tests n'en a jamais, donc le test passerait sans jamais exercer
+// la boucle et prouverait exactement rien.
+var stdinIsTerminal = func() bool {
 	return term.IsTerminal(int(os.Stdin.Fd()))
 }

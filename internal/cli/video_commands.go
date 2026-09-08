@@ -558,6 +558,13 @@ type sealOptions struct {
 	noCompress bool
 	kdf        crypt.KDFParams
 
+	// toSelf sceller pour l'identite de cette machine, en retombant sur une phrase de
+	// passe s'il n'y en a pas. Porte par le menu contextuel et pas par un `seal` nu :
+	// changer ce que fait la ligne de commande sans le dire produirait des conteneurs
+	// qu'on ne peut ouvrir que sur une machine, a la place de conteneurs ouvrables
+	// partout, sans que personne l'ait demande.
+	toSelf bool
+
 	// unlock reads the passphrase of the *identity file*, which is a different secret
 	// from the container's and so has its own flags.
 	unlock *passphraseSource
@@ -587,9 +594,33 @@ func sealFile(env *Env, path string, o sealOptions, pass *passphraseSource) ([]b
 		},
 	}
 
+	cible := o.to
+	// ⚠️ Le geste du menu contextuel scelle pour cette machine, pas sous une phrase de
+	// passe. C'est ce qui rend les deux clics symetriques : le double-clic qui dechiffre
+	// consulte DEJA l'identite du PC sur un conteneur hybride, donc chiffrer puis rouvrir
+	// se fait sans qu'on demande jamais rien. Chiffrer par phrase de passe forcait a en
+	// inventer une, puis a la retaper pour rouvrir, pour un fichier qu'on chiffre en
+	// general pour soi.
+	//
+	// La moitie PUBLIQUE suffit et c'est volontaire : elle n'est pas chiffree, donc rien
+	// ne reclame la phrase de passe qui protege eventuellement l'identite privee. Sceller
+	// ne demande pas de pouvoir ouvrir.
+	if cible == "" && o.toSelf {
+		if pub, err := cheminPublicDeLaMachine(); err == nil {
+			cible = pub
+		} else {
+			// Dit, pas tu : sans identite le conteneur sera d'une autre nature, ouvrable
+			// partout au lieu d'ici seulement, et l'utilisateur doit savoir laquelle il
+			// vient de fabriquer.
+			fmt.Fprintf(env.Stderr,
+				"No identity on this machine, so this will be sealed under a passphrase "+
+					"instead (%v).\n", err)
+		}
+	}
+
 	cryptOpts := crypt.SealOptions{}
-	if o.to != "" {
-		recipient, err := resolveRecipient(o.to)
+	if cible != "" {
+		recipient, err := resolveRecipient(cible)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -597,8 +628,16 @@ func sealFile(env *Env, path string, o sealOptions, pass *passphraseSource) ([]b
 		// The recipient goes into the signature so the container cannot be re-aimed
 		// at a third party with its signature intact.
 		packOpts.Recipient = recipient.Fingerprint()
+		if o.to == "" {
+			// Annonce ce qui vient d'etre decide a la place de l'utilisateur, et sa
+			// consequence : ce conteneur ne s'ouvre qu'avec cette identite.
+			fmt.Fprintf(env.Stdout,
+				"Sealed for this machine's identity (%s). Only somebody holding it can "+
+					"open this, and that includes you: keep it.\n",
+				recipient.Short())
+		}
 	} else {
-		p, err := pass.resolve(env, "Passphrase: ")
+		p, err := pass.resolveInteractif(env, "Passphrase: ")
 		if err != nil {
 			return nil, 0, err
 		}
@@ -664,7 +703,7 @@ func openSealed(env *Env, sealed []byte, o openOptions, pass *passphraseSource) 
 		opts.Identity = id
 		recipient = id.Public.Fingerprint()
 	default:
-		p, err := pass.resolve(env, "Passphrase: ")
+		p, err := pass.resolveInteractif(env, "Passphrase: ")
 		if err != nil {
 			return container.Opened{}, err
 		}

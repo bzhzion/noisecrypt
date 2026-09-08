@@ -288,6 +288,7 @@ func runSeal(env *Env, args []string) error {
 	in := fs.String("in", "", "file to encrypt (required)")
 	out := fs.String("out", "", "container to write (default: the input name with .ncry appended)")
 	to := fs.String("to", "", "recipient public identity, or a file containing one; omit to seal with a passphrase")
+	toSelf := fs.Bool("to-self", false, "seal for this machine's own identity, falling back to a passphrase if there is none")
 	noCompress := fs.Bool("no-compress", false, "skip compression (use for already-compressed input)")
 	signWith := fs.String("sign", "", "sign the container with this private identity, or a file containing one")
 	chunk := fs.Uint("chunk-size", uint(crypt.DefaultChunkSize), "plaintext bytes per encrypted chunk")
@@ -316,7 +317,7 @@ func runSeal(env *Env, args []string) error {
 	}
 
 	sealed, plainSize, err := sealFile(env, *in, sealOptions{
-		to: *to, signWith: *signWith, noCompress: *noCompress, kdf: kdf, unlock: unlock,
+		to: *to, toSelf: *toSelf, signWith: *signWith, noCompress: *noCompress, kdf: kdf, unlock: unlock,
 	}, pass)
 	if err != nil {
 		return err
@@ -528,6 +529,28 @@ func writeOutput(path string, data []byte, force bool, mode os.FileMode) error {
 
 // resolveRecipient accepts either a public identity token or a path to a file
 // containing one, so a caller does not have to care which they have.
+// cheminPublicDeLaMachine rend le chemin de la moitie publique de l'identite de ce poste,
+// et une erreur disant pourquoi il n'y en a pas.
+//
+// L'existence est verifiee ici plutot que laissee a resolveRecipient : « pas d'identite sur
+// cette machine » doit conduire a un repli sur la phrase de passe, alors qu'un fichier
+// present mais illisible ou corrompu est une vraie erreur qu'il faut remonter. Les deux se
+// ressemblent si on se contente d'essayer de lire.
+func cheminPublicDeLaMachine() (string, error) {
+	prive, err := keystore.DefaultIdentityPath()
+	if err != nil {
+		return "", err
+	}
+	pub := keystore.PublicPathFor(prive)
+	if _, err := os.Stat(pub); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return "", errors.New("no public identity file beside the stored one")
+		}
+		return "", err
+	}
+	return pub, nil
+}
+
 func resolveRecipient(s string) (crypt.PublicIdentity, error) {
 	if id, err := crypt.ParsePublicIdentity(s); err == nil {
 		return id, nil

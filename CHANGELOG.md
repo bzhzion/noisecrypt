@@ -10,6 +10,54 @@ patched by CI at tag time and are never committed with a real version number.
 
 ## [Unreleased]
 
+### Changed
+
+- **Right-click "encrypt" now seals for this machine's own identity, not under a
+  passphrase.** painteau's point, and it makes the two gestures symmetric: double-clicking a
+  `.ncry` **already** consults the stored identity for a hybrid container, so encrypting and
+  reopening now happen without a single prompt. Sealing under a passphrase meant inventing
+  one and retyping it to reopen, for a file usually encrypted for oneself.
+  - Falls back to a passphrase when the machine has no identity, **and says so**. The
+    silence would have been the real defect: the two containers are not the same thing, one
+    opens only with that identity and the other opens anywhere.
+  - Announces what it decided on the user's behalf, with the fingerprint and the
+    consequence: only somebody holding that identity can open it, and that includes you.
+  - Only the **public** half is read, deliberately: it is not encrypted, so nothing asks for
+    the passphrase that may protect the private identity. Sealing does not require being
+    able to open.
+  - **The command line is unchanged.** This rides on a `-to-self` flag that the context menu
+    passes, rather than on what a bare `seal` does. Silently changing that would produce
+    containers openable on one machine where they used to be openable anywhere, and nobody
+    would have been told. A test pins that a bare `seal` still refuses without a passphrase
+    even when an identity sits right beside it.
+
+### Fixed
+
+- **Right-click "encrypt", press Enter on the passphrase prompt, and the window announced
+  `no passphrase supplied` and closed.** Reported by painteau, reproduced to the character.
+  An empty entry now says what is wrong and asks again, on both encrypting and decrypting.
+  - **The same defect had been fixed hours earlier, for `keygen` only.** Its
+    `demanderPhrase` carries a long comment about exactly this: a message written for
+    somebody at a shell, served to somebody who just clicked a context menu, with no way
+    to act on it. The two most used verbs of the program kept the fault. **Fixing a pattern
+    in one place and not the others is the real lesson here**, and it is the second time
+    today: this morning the Start Menu shortcut was found broken because verifying an
+    installation through the registry never clicks anything.
+  - **Measured before being fixed, through a real console rather than reasoned about.** Two
+    causes were possible and they needed opposite fixes: an entry accepted as empty, or a
+    read that never waited. The prompt does wait, so it was the former. Without that check
+    the fix could have been aimed at the wrong half.
+  - `ErrPassphraseTooShort` is now a sentinel, because the length floor was a bare
+    `fmt.Errorf` and therefore indistinguishable from a read failure. **That distinction is
+    what makes the retry safe**: a read that fails because nobody is there returns
+    immediately, since looping there would be an infinite wait with nothing to interrupt
+    it, which on an Explorer-launched window is worse than the original defect.
+  - `stdinIsTerminal` became a variable so tests can override it. Without that seam the
+    retry loop is untestable: it requires a terminal, a test suite never has one, so the
+    test would pass without ever exercising the loop and would prove nothing.
+  - Five tests, and one of them corrected me: the first version expected two prompts and
+    got EOF, because sealing also asks for a **confirmation**. Three prompts, not two.
+
 ## [0.5.1] - 2026-09-08
 
 ### Fixed

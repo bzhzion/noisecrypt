@@ -49,7 +49,10 @@ func TestShellRegisterWritesEveryEntry(t *testing.T) {
 		// wildcard, which is worth pinning: a check written with a wildcard-aware
 		// helper reports this key missing when it is present, and that is how the
 		// first manual verification of this feature went.
-		{encryptKey() + `\command`, ` -pause seal -in "%1"`},
+		// `-to-self` fait partie du contrat : sans lui le clic droit scelle sous une
+		// phrase de passe, et le double-clic qui rouvre en redemande une, alors que
+		// l'identite de la machine est juste la. Epingle pour qu'un retrait se voie.
+		{encryptKey() + `\command`, ` -pause seal -in "%1" -to-self`},
 		// Double-click a .ncry.
 		{decryptKey() + `\shell\open\command`, ` -pause open -in "%1"`},
 		// Right-click the background of a folder. L'identite doit etre creee DANS ce
