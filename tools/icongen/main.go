@@ -85,6 +85,8 @@ func main() {
 	pngDir := flag.String("png-dir", "", "also write each size as a PNG here, for review")
 	svg := flag.String("svg", filepath.Join("web", "favicon.svg"),
 		"also write the application tile as SVG here, for the website (empty to skip)")
+	thumb := flag.String("thumb", "", "write the tile as a PNG here, for a portfolio thumbnail")
+	thumbSize := flag.Int("thumb-size", 1024, "side of the -thumb PNG")
 	flag.Parse()
 
 	for _, size := range sizes {
@@ -138,6 +140,43 @@ func main() {
 	if *svg != "" {
 		writeTileSVG(*svg)
 	}
+
+	if *thumb != "" {
+		writeThumb(*thumb, *thumbSize)
+	}
+}
+
+// thumbMarkRatio est la part du cote qu'occupe la TUILE dans une vignette de portfolio.
+//
+// ⚠️ La premiere version remplissait la vignette avec la tuile a fond perdu, et painteau a
+// renvoye vers les autres entrees du portfolio. Mesure sur `ombra.png` et `hucheor.png` :
+// la marque y occupe environ un tiers du carre, centree, sur un fond plat aux couleurs du
+// projet. Une vignette a fond perdu au milieu de celles-la ne se lit pas comme une marque,
+// elle se lit comme une erreur de cadrage.
+//
+// La tuile dessine son N sur les deux tiers de SA propre toile, donc une tuile a 52 % du
+// cote donne un N a environ 35 % de la vignette, ce qui tombe dans la convention.
+const thumbMarkRatio = 52
+
+// writeThumb ecrit la vignette de portfolio : la tuile, petite et centree sur son fond.
+func writeThumb(path string, size int) {
+	img := image.NewNRGBA(image.Rect(0, 0, size, size))
+	fill(img, img.Bounds(), ink)
+
+	cote := size * thumbMarkRatio / 100
+	tuile := image.NewNRGBA(image.Rect(0, 0, cote, cote))
+	drawTileAt(tuile, cote)
+
+	// Le fond de la tuile est deja `ink`, donc le collage ne laisse aucune couture.
+	dx, dy := (size-cote)/2, (size-cote)/2
+	for y := range cote {
+		for x := range cote {
+			img.SetNRGBA(dx+x, dy+y, tuile.NRGBAAt(x, y))
+		}
+	}
+
+	writePNG(path, img)
+	fmt.Printf("%s: la meme tuile, %dpx de marque centree sur %dpx\n", path, cote, size)
 }
 
 // reduce box-averages by a whole factor.
@@ -197,15 +236,22 @@ var tileShape = [tileCells][tileCells]int{
 	{1, 0, 0, 0, 1},
 }
 
-// tileGeometry rend la disposition de la tuile, en unites du dessin maitre.
-func tileGeometry() (offset, cell, gap int) {
-	margin := master / 6
-	span := master - 2*margin
+// tileGeometryAt rend la disposition de la tuile pour un cote donne.
+//
+// Parametree par la taille et non figee sur `master`, pour que la vignette du portfolio de
+// breizhzion.com sorte du meme dessin que l'icone et le logo du site. Ajouter un troisieme
+// dessin pour un troisieme usage serait rouvrir la divergence qu'on vient de refermer.
+func tileGeometryAt(size int) (offset, cell, gap int) {
+	margin := size / 6
+	span := size - 2*margin
 	cell = span / tileCells
 	offset = margin + (span-cell*tileCells)/2
 	gap = cell / 10
 	return offset, cell, gap
 }
+
+// tileGeometry rend la disposition de la tuile, en unites du dessin maitre.
+func tileGeometry() (offset, cell, gap int) { return tileGeometryAt(master) }
 
 // tileColour rend la couleur d'une cellule : la diagonale porte le signal.
 func tileColour(row, col int) color.NRGBA {
@@ -216,9 +262,12 @@ func tileColour(row, col int) color.NRGBA {
 }
 
 // drawTile is the application icon: an N built out of macro cells on a filled ground.
-func drawTile(img *image.NRGBA) {
+func drawTile(img *image.NRGBA) { drawTileAt(img, master) }
+
+// drawTileAt dessine la tuile au cote demande.
+func drawTileAt(img *image.NRGBA, size int) {
 	fill(img, img.Bounds(), ink)
-	offset, cell, gap := tileGeometry()
+	offset, cell, gap := tileGeometryAt(size)
 
 	for row := range tileCells {
 		for col := range tileCells {

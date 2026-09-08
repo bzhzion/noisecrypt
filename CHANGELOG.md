@@ -10,6 +10,20 @@ patched by CI at tag time and are never committed with a real version number.
 
 ## [Unreleased]
 
+### Added
+
+- **`icongen -thumb` writes the tile as a portfolio thumbnail**, so the entry on
+  `breizhzion.com` comes from the same matrix as the application icon and the website's
+  favicon. The geometry is parameterised by size rather than fixed on the master drawing:
+  adding a third drawing for a third use would reopen the divergence just closed.
+  - `thumbMarkRatio` is a named constant with the measurement that justifies it. The first
+    attempt filled the thumbnail edge to edge; measured on `ombra.png` and `hucheor.png`, the
+    mark there occupies about a third of the square, centred, on a flat ground in the
+    project's colours. A full-bleed thumbnail among those does not read as a mark, it reads
+    as a framing mistake, which is what painteau pointed at.
+  - Proved harmless: both `.ico` files and `web/favicon.svg` regenerate byte for byte
+    identical after the refactor.
+
 ### Fixed
 
 - **The website's favicon and header logo were not the application's icon.** painteau asked
