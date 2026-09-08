@@ -10,15 +10,7 @@ patched by CI at tag time and are never committed with a real version number.
 
 ## [Unreleased]
 
-### Fixed
-
-- **The README described the three right-click gestures as they were this morning.** It named
-  the folder entry "New NoiseCrypt identity", a label that changed to "Create a NoiseCrypt
-  identity here", did not mention the new **Decrypt with NoiseCrypt** verb, and did not say
-  that encrypting now seals for the machine's own identity. All three were changed today, and
-  the public front door still advertised the old behaviour.
-  - It now also says the thing the website had to be corrected on: **create your identity
-    first, because nothing creates it for you.**
+## [0.7.0] - 2026-09-08
 
 ### Added
 
@@ -33,35 +25,6 @@ patched by CI at tag time and are never committed with a real version number.
     as a framing mistake, which is what painteau pointed at.
   - Proved harmless: both `.ico` files and `web/favicon.svg` regenerate byte for byte
     identical after the refactor.
-
-### Fixed
-
-- **The website's favicon and header logo were not the application's icon.** painteau asked
-  why, and the answer is that they were a cell pattern hand-drawn in the HTML, meant to
-  evoke the product. **The application's icon is a recognisable N**, built of macro cells
-  with its diagonal in the signal colour, so the site was showing a mark that represented
-  nothing.
-  - `tools/icongen` now also emits the tile as SVG, **from the same matrix** that draws
-    `assets/noisecrypt.ico`. One drawing, several outputs: a redesign of the icon takes the
-    website's logo with it instead of leaving it behind.
-  - The shape matrix and its geometry were extracted so the raster and vector paths cannot
-    diverge. **Proved harmless: both `.ico` files regenerate byte for byte identical**, so
-    the refactor changed no drawing.
-  - Two tests, and the first was proved red by hand-editing the committed SVG: one fails if
-    `web/favicon.svg` stops being what the generator produces, the other asserts the mark is
-    still an N (both uprights solid, the diagonal present and in the signal colour) rather
-    than checking a rendered size, since an accidental flattening into noise would pass any
-    size check.
-  - ⚠️ **And the first icon update was invisible online**, which is a second defect the first
-    one uncovered. `nginx.conf` gives `.svg` a seven-day cache and the favicon is referenced
-    under a fixed name, so Cloudflare kept serving the old drawing while the page was
-    already the new one (`cf-cache-status: HIT`, age 733 s). The stylesheet was protected by
-    a fingerprint and **the icon sitting right beside it was not**: the third time in one day
-    that a pattern was fixed in one place and not the others. Both references now carry the
-    commit fingerprint, a guard asserts there are exactly two of them, and the edge cache was
-    purged for the copy already served.
-
-### Added
 
 - **A website, `noisecrypt.breizhzion.com`**, in `web/`: presentation and manual, in French,
   deployed to axolotl on a version tag or on demand. Static HTML and CSS behind nginx, the
@@ -97,6 +60,39 @@ patched by CI at tag time and are never committed with a real version number.
     the code, and the page now opens that section by saying so.
 
 ### Fixed
+
+- **The README described the three right-click gestures as they were this morning.** It named
+  the folder entry "New NoiseCrypt identity", a label that changed to "Create a NoiseCrypt
+  identity here", did not mention the new **Decrypt with NoiseCrypt** verb, and did not say
+  that encrypting now seals for the machine's own identity. All three were changed today, and
+  the public front door still advertised the old behaviour.
+  - It now also says the thing the website had to be corrected on: **create your identity
+    first, because nothing creates it for you.**
+
+- **The website's favicon and header logo were not the application's icon.** painteau asked
+  why, and the answer is that they were a cell pattern hand-drawn in the HTML, meant to
+  evoke the product. **The application's icon is a recognisable N**, built of macro cells
+  with its diagonal in the signal colour, so the site was showing a mark that represented
+  nothing.
+  - `tools/icongen` now also emits the tile as SVG, **from the same matrix** that draws
+    `assets/noisecrypt.ico`. One drawing, several outputs: a redesign of the icon takes the
+    website's logo with it instead of leaving it behind.
+  - The shape matrix and its geometry were extracted so the raster and vector paths cannot
+    diverge. **Proved harmless: both `.ico` files regenerate byte for byte identical**, so
+    the refactor changed no drawing.
+  - Two tests, and the first was proved red by hand-editing the committed SVG: one fails if
+    `web/favicon.svg` stops being what the generator produces, the other asserts the mark is
+    still an N (both uprights solid, the diagonal present and in the signal colour) rather
+    than checking a rendered size, since an accidental flattening into noise would pass any
+    size check.
+  - ⚠️ **And the first icon update was invisible online**, which is a second defect the first
+    one uncovered. `nginx.conf` gives `.svg` a seven-day cache and the favicon is referenced
+    under a fixed name, so Cloudflare kept serving the old drawing while the page was
+    already the new one (`cf-cache-status: HIT`, age 733 s). The stylesheet was protected by
+    a fingerprint and **the icon sitting right beside it was not**: the third time in one day
+    that a pattern was fixed in one place and not the others. Both references now carry the
+    commit fingerprint, a guard asserts there are exactly two of them, and the edge cache was
+    purged for the copy already served.
 
 - **Right-clicking a `.ncry` offered only to re-encrypt it.** Reported by painteau. Two
   causes, and it took both to produce that menu.
