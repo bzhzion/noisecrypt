@@ -10,6 +10,8 @@ patched by CI at tag time and are never committed with a real version number.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-08
+
 ### Changed
 
 - **Right-click "encrypt" now seals for this machine's own identity, not under a
