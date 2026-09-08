@@ -23,8 +23,18 @@ RUN ! grep -q '{{VERSION}}' /usr/share/nginx/html/index.html
 # l'interdit explicitement, parce qu'un `?v=0.6.0` est lisible sur une page publique et
 # renseignerait la version que la sonde de sante refuse justement de donner sans jeton.
 RUN sed -i "s/styles\.css\"/styles.css?v=${GIT_SHA}\"/" /usr/share/nginx/html/index.html
-# Et un garde-fou, parce qu'un `sed` qui ne trouve pas son motif rend 0 : renommer la
-# feuille ou reformater cette balise ferait disparaitre le cache-busting en silence, et
+# ⚠️ Le favicon AUSSI, et son absence ici etait un vrai defaut : la premiere mise a jour de
+# l'icone a ete invisible en ligne. `nginx.conf` donne sept jours de cache aux `.svg`, le
+# fichier est reference sous un nom fixe, donc Cloudflare a continue de servir l'ancien
+# dessin pendant que la page etait deja la nouvelle (`cf-cache-status: HIT`, age 733 s).
+# La feuille de style etait protegee et pas l'icone posee juste a cote : troisieme fois dans
+# la journee qu'un motif est corrige a un endroit et pas aux autres.
+#
+# Le `g` porte sur les deux references, le `<link rel="icon">` et le `<img>` de l'en-tete.
+RUN sed -i "s/favicon\.svg\"/favicon.svg?v=${GIT_SHA}\"/g" /usr/share/nginx/html/index.html
+# Et des garde-fous, parce qu'un `sed` qui ne trouve pas son motif rend 0 : renommer un
+# fichier ou reformater une balise ferait disparaitre le cache-busting en silence, et
 # personne ne le verrait avant un deploiement qui ne se voit pas.
 RUN grep -q 'styles\.css?v=' /usr/share/nginx/html/index.html
+RUN test "$(grep -c 'favicon\.svg?v=' /usr/share/nginx/html/index.html)" = 2
 EXPOSE 80

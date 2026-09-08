@@ -28,6 +28,14 @@ patched by CI at tag time and are never committed with a real version number.
     still an N (both uprights solid, the diagonal present and in the signal colour) rather
     than checking a rendered size, since an accidental flattening into noise would pass any
     size check.
+  - ⚠️ **And the first icon update was invisible online**, which is a second defect the first
+    one uncovered. `nginx.conf` gives `.svg` a seven-day cache and the favicon is referenced
+    under a fixed name, so Cloudflare kept serving the old drawing while the page was
+    already the new one (`cf-cache-status: HIT`, age 733 s). The stylesheet was protected by
+    a fingerprint and **the icon sitting right beside it was not**: the third time in one day
+    that a pattern was fixed in one place and not the others. Both references now carry the
+    commit fingerprint, a guard asserts there are exactly two of them, and the edge cache was
+    purged for the copy already served.
 
 ### Added
 
