@@ -106,15 +106,25 @@ jobs:
         run: |
           # The personal fork falls behind microsoft/winget-pkgs, which is a very
           # high-traffic repository, and wingetcreate then fails with "the forked
-          # repository could not be synced". Resynchronised first, non-blocking.
+          # repository could not be synced". Resynchronised first.
+          #
+          # BLOCKING since 2026-09-18, and that is the whole point of the change. As a
+          # mere warning, the step carried on into a `wingetcreate update` that was
+          # already doomed, and failed a minute later with a message that does not name
+          # the cause, sending you to look at the package or the token instead. A failure
+          # here has a single likely cause, the fork has diverged from upstream, and it is
+          # repaired by hand. Retrying is pointless.
           try {
-            Invoke-RestMethod -Method Post `
+            $sync = Invoke-RestMethod -Method Post `
               -Uri "https://api.github.com/repos/painteau/winget-pkgs/merge-upstream" `
               -Headers @{ Authorization = "Bearer $env:WINGET_PAT"; Accept = "application/vnd.github+json" } `
               -Body (@{ branch = "master" } | ConvertTo-Json) `
               -ContentType "application/json"
+            Write-Host "winget-pkgs fork synced: $($sync.message)"
           } catch {
-            Write-Warning "Syncing the winget-pkgs fork failed (non-blocking): $_"
+            $code = $_.Exception.Response.StatusCode.value__
+            Write-Host "::error title=winget-pkgs fork not synced::HTTP $code. The painteau/winget-pkgs fork cannot be fast-forwarded on master, so wingetcreate would work from a stale base. Most likely cause: the fork has diverged from microsoft/winget-pkgs and must be reset by hand, or deleted and re-forked. Detail: $_"
+            exit 1
           }
 
           Invoke-WebRequest -Uri "https://aka.ms/wingetcreate/latest" -OutFile "wingetcreate.exe"

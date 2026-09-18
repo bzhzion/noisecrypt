@@ -10,6 +10,14 @@ patched by CI at tag time and are never committed with a real version number.
 
 ## [Unreleased]
 
+### Fixed
+- **Syncing the `winget-pkgs` fork** is now **blocking**. As a mere warning, the step
+  carried on into a `wingetcreate update` that was already doomed, and failed a minute
+  later with a message that does not name the cause, sending you to look at the package
+  or the token instead. A failure here has a single likely cause, the fork has diverged
+  from upstream, and it is repaired by hand. The error message now names it and gives
+  the repair. Failure path verified against the live API.
+
 ## [0.7.0] - 2026-09-08
 
 ### Added
