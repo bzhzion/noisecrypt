@@ -10,6 +10,15 @@ patched by CI at tag time and are never committed with a real version number.
 
 ## [Unreleased]
 
+### Modifié
+
+- **`actions/checkout` et `actions/setup-node` passent en v7** dans les workflows : les versions
+  posées déclaraient `using: node20`, déprécié et déjà forcé sur Node 24 par GitHub. Les quatre
+  changements de rupture de ces majeures ont été lus et confrontés au parc, aucun ne s'y applique,
+  et les 11 runners de l'org sont en 2.336.0 ou mieux, au-dessus du minimum 2.327.1 qu'exigent
+  `checkout` v5 et `setup-node` v5. Vérifié par un build iOS réel avant propagation.
+
+
 ### Fixed
 - **Syncing the `winget-pkgs` fork** is now **blocking**. As a mere warning, the step
   carried on into a `wingetcreate update` that was already doomed, and failed a minute

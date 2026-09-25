@@ -26,7 +26,7 @@ jobs:
       packages: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # Sans l'historique complet, aucun tag n'est visible et `git describe` rend une
           # erreur : la page annoncerait alors « dev » comme numero de version.
