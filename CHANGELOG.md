@@ -10,6 +10,8 @@ patched by CI at tag time and are never committed with a real version number.
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-10-09
+
 ### Modifié
 
 - **Site vitrine, mobile : marges latérales de 32 px** (26 px avant) sous 640 px, remplissage des
