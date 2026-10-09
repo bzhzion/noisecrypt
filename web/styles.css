@@ -89,16 +89,6 @@ body {
   padding: 0 calc(var(--cell) * 1.2);
 }
 
-/* Mobile : marge laterale franche (32 px) au lieu des 26 px du bureau, qui laissaient le
-   texte collé aux bords. Les blocs encadres perdent un peu de leur propre remplissage pour
-   que la largeur de lecture reste correcte, et rien ne peut déborder du viewport. */
-@media (max-width: 640px) {
-  .centre { padding-inline: max(2rem, env(safe-area-inset-left)) max(2rem, env(safe-area-inset-right)); }
-  .carte, .franchise, .ombra, pre { padding: calc(var(--cell) * 0.8); }
-  body { overflow-x: clip; overflow-wrap: break-word; }
-  .hero { padding-top: calc(var(--cell) * 2.4); }
-}
-
 /* Lien d'evitement : premier element focusable, invisible tant qu'il n'a pas le focus.
    WCAG 2.4.1, et c'est ce qui rend un site a longues sections utilisable au clavier. */
 .evitement {
@@ -144,7 +134,9 @@ nav.liens a:hover, nav.liens a:focus-visible { color: var(--paper); border-botto
 
 /* ---------- Hero ---------- */
 
-.hero { padding: calc(var(--cell) * 3.5) 0 calc(var(--cell) * 2.5); }
+/* padding-block et pas le raccourci `padding` : le raccourci remettait les marges laterales a 0
+   et ecrasait celles de .centre, le hero touchait les bords sur mobile. */
+.hero { padding-block: calc(var(--cell) * 3.5) calc(var(--cell) * 2.5); }
 
 .hero h1 {
   font-family: var(--display);
