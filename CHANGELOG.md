@@ -12,6 +12,9 @@ patched by CI at tag time and are never committed with a real version number.
 
 ### Modifié
 
+- **Site vitrine, mobile : marges latérales de 32 px** (26 px avant) sous 640 px, remplissage des
+  blocs encadrés réduit pour garder une largeur de lecture correcte, et plus aucun débordement
+  horizontal possible (`web/styles.css`).
 - **`actions/checkout` et `actions/setup-node` passent en v7** dans les workflows : les versions
   posées déclaraient `using: node20`, déprécié et déjà forcé sur Node 24 par GitHub. Les quatre
   changements de rupture de ces majeures ont été lus et confrontés au parc, aucun ne s'y applique,
