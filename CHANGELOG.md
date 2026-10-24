@@ -10,6 +10,22 @@ patched by CI at tag time and are never committed with a real version number.
 
 ## [Unreleased]
 
+### Ajouté
+
+- **Politique de confidentialité, `noisecrypt.breizhzion.com/privacy`** (anglais puis français),
+  demandée par le modérateur winget sur la PR de première soumission (politique 1.5.1 du dépôt
+  winget). Écrite d'après une lecture de tout le code et non de mémoire : ce qui est traité, les
+  fichiers écrits et leurs droits (identité dans `~/.noisecrypt`, `icacls` sous Windows), les
+  fichiers temporaires, les clés de registre de l'intégration à l'explorateur, l'interface locale,
+  ce que yt-dlp contacte, ce qu'un conteneur laisse voir en clair, et ce que la désinstallation
+  garde (les identités, volontairement). Lien en pied de page et entrée du plan du site.
+- **Garde-fou `scripts/verifier-ecritures-disque.py`**, transcrit de BeamMeUp et Hublot : la CI
+  (job `privacy`) et la publication winget échouent quand le code écrit un nom que la page ne
+  cite pas, ou quand ses points d'écriture, de réseau ou de lancement de programme changent
+  (`scripts/ecritures-disque.json`). Un échec dit « relire la page », puis `--maj`. Prouvé rouge
+  par deux mutations avant d'être cru.
+- Le déploiement du site vérifie que `/privacy` sert bien la politique, en lisant le contenu.
+
 ## [0.7.2] - 2026-10-09
 
 ### Corrigé

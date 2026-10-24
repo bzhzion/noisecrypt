@@ -1,0 +1,517 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NoiseCrypt · Privacy policy</title>
+<meta name="description" content="NoiseCrypt privacy policy: what the software processes, what it writes on your disk and where, what uninstalling keeps, and what it never sends anywhere.">
+<meta name="theme-color" content="#0a0b0d">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="canonical" href="https://noisecrypt.breizhzion.com/privacy">
+<link rel="preconnect" href="https://cdn.breizhzion.com" crossorigin>
+<link rel="stylesheet" href="https://cdn.breizhzion.com/fonts/noisecrypt-fonts.css">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- ⛔ Cette page se DERIVE du code, elle ne s'ecrit jamais de memoire. Celle de BeamMeUp a
+     ete fausse deux fois pour cette raison, la premiere fois relevee en public par un
+     moderateur winget. `scripts/verifier-ecritures-disque.py` bloque la CI quand le code
+     ecrit un nom que cette page ne cite pas, ou quand ses points d'ecriture changent.
+     Les deux versions, anglaise et francaise, disent la MEME chose : en modifier une sans
+     l'autre les fait se contredire, sur un document de confidentialite. -->
+
+<div class="grille" aria-hidden="true"></div>
+
+<div class="enveloppe">
+
+<a class="evitement" href="#contenu">Skip to content</a>
+
+<header class="haut">
+  <div class="centre">
+    <a class="marque" href="/">
+      <img src="favicon.svg" width="24" height="24" alt="">
+      <b>Noise<span>Crypt</span></b>
+    </a>
+    <nav class="liens" aria-label="Sections">
+      <a href="#processed">Processed</a>
+      <a href="#storage">Storage</a>
+      <a href="#uninstall">Uninstall</a>
+      <a href="#fr" hreflang="fr">Français</a>
+    </nav>
+  </div>
+</header>
+
+<main id="contenu">
+
+<div class="hero centre">
+  <h1>Privacy policy</h1>
+  <p class="accroche">
+    NoiseCrypt runs entirely on your machine. It has no account, no server, no telemetry,
+    no crash reporting and no update check, and it sends nothing to BREIZHZION or to anyone
+    else. This page lists everything it does read, write and contact, so you can check it.
+  </p>
+  <p class="sous-actions">
+    Last updated 2026-10-24. Applies to NoiseCrypt 0.7.2 and later, on Windows, macOS and
+    Linux. <a href="#fr" hreflang="fr">Version française plus bas.</a>
+  </p>
+</div>
+
+<section id="processed">
+  <div class="centre">
+    <p class="rang">01 / What is processed</p>
+    <h2>What NoiseCrypt handles, and where it goes</h2>
+    <p>
+      Everything below happens on your computer. None of it is transmitted by NoiseCrypt.
+    </p>
+    <div class="defile">
+      <table>
+        <caption>Data NoiseCrypt processes</caption>
+        <thead>
+          <tr><th scope="col">Data</th><th scope="col">What happens to it</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>The contents of the files you encrypt or decrypt</td>
+            <td>Read into memory, encrypted or decrypted, and written to the output you
+                asked for. Never stored anywhere else and never sent.</td>
+          </tr>
+          <tr>
+            <td>Passphrases</td>
+            <td>Typed without echo, or read from the file or environment variable you name
+                with <code>-passphrase-file</code> / <code>-passphrase-env</code>, or typed
+                into the interface. Held in memory for the operation only. NoiseCrypt never
+                writes a passphrase to disk or to a log, and never puts one on a command
+                line. In the interface, your browser or password manager may offer to
+                remember a passphrase field, as on any page: that copy, if you accept it,
+                belongs to the browser, not to NoiseCrypt.</td>
+          </tr>
+          <tr>
+            <td>Your private identity (your key)</td>
+            <td>Generated on your machine and stored in a file, protected by your
+                passphrase unless you explicitly choose not to. See
+                <a href="#storage">storage</a>.</td>
+          </tr>
+          <tr>
+            <td>Other people's public identities</td>
+            <td>Read from the file or text you give with <code>-to</code> or
+                <code>-from</code>. Not copied or remembered.</td>
+          </tr>
+          <tr>
+            <td>File name and modification date of an encrypted file</td>
+            <td>Stored <strong>inside</strong> the encrypted container, so only the
+                recipient sees them, and restored on decryption.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section id="storage">
+  <div class="centre">
+    <p class="rang">02 / Local storage</p>
+    <h2>Everything NoiseCrypt writes on your disk</h2>
+    <p>
+      This is the complete list. Nothing else is written, and there is no settings file,
+      no history and no log.
+    </p>
+
+    <h3>Your identity</h3>
+    <p>
+      <code>noisecrypt keygen</code>, or the first-run screen of the interface, writes two
+      files in a <code>.noisecrypt</code> folder in your home directory
+      (<code>%USERPROFILE%\.noisecrypt</code> on Windows, <code>~/.noisecrypt</code> on
+      macOS and Linux):
+    </p>
+    <ul>
+      <li><code>identity.ncrykey</code>: your <strong>private</strong> identity. Encrypted
+          with your passphrase (Argon2id), unless you chose to store it unprotected, in
+          which case anyone who can read the file has your key. Identities made by older
+          versions may be called <code>identity</code>, without extension; they are used
+          as they are and never renamed.</li>
+      <li><code>identity.ncrypub</code>: your <strong>public</strong> identity, the part
+          you hand out. It holds nothing secret.</li>
+    </ul>
+    <p>
+      The folder is deliberately not under AppData: a domain or Entra joined Windows
+      profile can synchronise AppData to a server, and a private key should not copy
+      itself anywhere without being asked. The environment variables
+      <code>NOISECRYPT_HOME</code> and <code>NOISECRYPT_IDENTITY</code> move the folder or
+      the file elsewhere.
+    </p>
+    <p>
+      <strong>Permissions.</strong> On macOS and Linux the folder is set to
+      <code>0700</code> and the files to <code>0600</code>. On Windows, NoiseCrypt runs
+      <code>icacls</code> on the folder and on each file: inheritance is cut, and the
+      Administrators, SYSTEM and Users groups are removed, leaving your account alone with
+      access. This stops other ordinary accounts from reading your key; it does not stop
+      someone who can already act as an administrator on the machine. One consequence:
+      backup software that runs as SYSTEM may not be able to read these files, so copy your
+      identity yourself to a safe place.
+    </p>
+    <p>
+      <strong>Identity in a folder you choose.</strong> <code>keygen -out</code> and the
+      Windows right-click entry <em>Create a NoiseCrypt identity here</em> write the same
+      two files in the folder you pointed at, and apply the same restriction to
+      <strong>that folder</strong>, not only to the files.
+    </p>
+
+    <h3>Files you ask for</h3>
+    <p>
+      Every other file NoiseCrypt writes is one you asked for, at the path you gave or next
+      to its input, and it refuses to overwrite an existing file unless you pass
+      <code>-force</code>:
+    </p>
+    <ul>
+      <li><code>seal</code> writes an encrypted <code>.ncry</code> container (by default the
+          input name with <code>.ncry</code> added).</li>
+      <li><code>encode</code> writes a <code>.mp4</code> video, produced by FFmpeg.</li>
+      <li><code>open</code> and <code>decode</code> write the recovered file, under the
+          name stored in the container, in the current folder (for the right-click entry,
+          normally the folder that holds the container).</li>
+      <li><code>simulate -keep</code> leaves its test videos
+          (<code>&lt;profile&gt;-master.mp4</code>,
+          <code>&lt;profile&gt;-h&lt;height&gt;-crf&lt;quality&gt;.mp4</code>) in the folder
+          you name.</li>
+    </ul>
+
+    <h3>Temporary files</h3>
+    <p>
+      Some operations need a file on disk because FFmpeg and yt-dlp read and write paths.
+      They are created in the system temporary folder with unpredictable names and, on
+      macOS and Linux, owner-only permissions, and they are deleted as soon as the operation
+      ends, including when it fails: <code>noisecrypt-dl-*</code> (a video downloaded from
+      an address), <code>noisecrypt-in-*</code> (a video given to the interface),
+      <code>noisecrypt-*.mp4</code> (a video the interface produces),
+      <code>noisecrypt-simulate-*</code> (<code>simulate</code> without
+      <code>-keep</code>), and <code>multipart-*</code> (a large upload received by the
+      interface). If NoiseCrypt is killed in the middle of an operation, one of these can
+      remain; it is safe to delete.
+    </p>
+
+    <h3>Windows integration</h3>
+    <p>
+      If you keep the installer option <em>Right-click to encrypt, double-click to
+      decrypt</em> (it is on by default, including in a silent install), or run
+      <code>noisecrypt shell register</code>, NoiseCrypt writes these keys under
+      <code>HKEY_CURRENT_USER\Software\Classes</code>, for your account only:
+      <code>*\shell\NoiseCryptEncrypt</code>,
+      <code>Directory\Background\shell\NoiseCryptIdentity</code>,
+      <code>NoiseCrypt.Container</code> and <code>.ncry</code>. They contain menu labels,
+      an icon reference and the path of the program, nothing else.
+      <code>noisecrypt shell unregister</code> removes them. The installer option
+      <em>Add NoiseCrypt to my PATH</em> appends the program folder to your user
+      <code>Path</code> variable, and uninstalling removes exactly that entry.
+    </p>
+
+    <h3>Program files</h3>
+    <p>
+      On Windows the installer places the program, its README, licence, changelog and
+      uninstaller in <code>%LOCALAPPDATA%\Programs\NoiseCrypt</code> (or Program Files if
+      you chose an installation for all users), with a Start menu shortcut. On Linux the
+      package installs <code>/usr/bin/noisecrypt</code>. On macOS the program is a single
+      file that you place yourself.
+    </p>
+  </div>
+</section>
+
+<section id="network">
+  <div class="centre">
+    <p class="rang">03 / Network</p>
+    <h2>What touches the network</h2>
+    <p>
+      NoiseCrypt sends nothing to BREIZHZION and contains no analytics, crash reporting or
+      update check. Only two features use a network, and both only when you use them.
+    </p>
+
+    <h3>The interface, on your own machine only</h3>
+    <p>
+      <code>noisecrypt gui</code> (also what a double-click on the program opens) starts a
+      small web server listening on <code>127.0.0.1</code>, on a random port, which other
+      computers cannot reach. It opens your default browser on an address that contains a
+      random access token, created fresh at each launch and valid only until the interface
+      stops. The browser then keeps that token in a session cookie,
+      <code>noisecrypt_token</code>, restricted to that address. The files you drop into
+      the page travel from the browser to NoiseCrypt on your machine, never further; the
+      files it gives back are saved by your browser like any download. The page loads
+      nothing from the Internet. Your browser may keep the address in its history, as it
+      does for any page; the token in it is useless once the interface has stopped.
+    </p>
+
+    <h3>Decoding from an address, through yt-dlp</h3>
+    <p>
+      <code>decode -url</code> and the address field of the interface are optional and only
+      work if <a href="https://github.com/yt-dlp/yt-dlp">yt-dlp</a>, a separate program,
+      is already installed: NoiseCrypt never downloads or installs it. When you use them,
+      NoiseCrypt itself resolves the host name of the address (a DNS lookup) to refuse
+      private network addresses, then runs yt-dlp, which connects to that address to
+      download the video. That website therefore sees a request from your IP address, as it
+      would if you watched the video in a browser. Nothing else is sent, and nothing goes to
+      BREIZHZION. yt-dlp is run with <code>--no-config</code>, so your yt-dlp configuration
+      files are ignored, but it may still keep its own cache (by default a
+      <code>yt-dlp</code> folder under <code>.cache</code> in your home directory); that
+      cache belongs to yt-dlp, and NoiseCrypt neither reads nor removes it.
+    </p>
+    <p>
+      FFmpeg, which NoiseCrypt uses to make and read videos, is also a separate program
+      that must already be installed. It is only given local files.
+    </p>
+  </div>
+</section>
+
+<section id="reveals">
+  <div class="centre">
+    <p class="rang">04 / What others can see</p>
+    <h2>What a container or a video reveals</h2>
+    <p>
+      The contents, file name and date are encrypted. A few things are not, and you should
+      know them before you send a container to anyone:
+    </p>
+    <ul>
+      <li>A container encrypted <strong>to an identity</strong> carries, in clear, the
+          fingerprint (SHA-256) of the recipient's public identity. Anyone who has the
+          container and knows that public identity can tell who it is addressed to. A
+          container encrypted with a passphrase carries no such fingerprint.</li>
+      <li>The size of a container or video gives an idea of the size of what is inside.</li>
+      <li>A NoiseCrypt video is recognisable as one. This is not steganography and offers
+          no deniability.</li>
+      <li>Once you upload a video to a platform, that platform holds it, under its own
+          terms, together with whatever it knows about your account. NoiseCrypt plays no
+          part in that.</li>
+    </ul>
+  </div>
+</section>
+
+<section id="uninstall">
+  <div class="centre">
+    <p class="rang">05 / Removing your data</p>
+    <h2>What uninstalling removes, and what it keeps</h2>
+    <p>
+      Uninstalling on Windows removes the program files, the Start menu shortcut, the
+      right-click and double-click entries and the <code>Path</code> entry. Removing the
+      Linux package removes <code>/usr/bin/noisecrypt</code>.
+    </p>
+    <div class="franchise">
+      <h3>Your identities are kept, on purpose</h3>
+      <p>
+        Uninstalling <strong>never</strong> deletes the <code>.noisecrypt</code> folder.
+        Your private identity is the only way to open what has been encrypted to you, and
+        losing it is irreversible, so it is not deleted as a side effect of a routine
+        action. Your containers, videos and recovered files are kept as well.
+      </p>
+      <p>
+        To remove everything NoiseCrypt left behind, delete the <code>.noisecrypt</code>
+        folder in your home directory (and any identity you created in a folder of your
+        choice), the files you produced, and, if you want, yt-dlp's cache and your
+        browser's history. Back up your identity first if you may ever need to open
+        something encrypted to it.
+      </p>
+    </div>
+  </div>
+</section>
+
+<section id="third-parties">
+  <div class="centre">
+    <p class="rang">06 / Third parties and contact</p>
+    <h2>Who receives data</h2>
+    <p>
+      No one, from NoiseCrypt. BREIZHZION receives no data from the software, and no
+      analytics, advertising or telemetry provider is involved. The only third parties the
+      software ever reaches are the ones you point it at: the website behind an address you
+      ask it to decode from, through yt-dlp.
+    </p>
+    <p>
+      Downloading NoiseCrypt (from GitHub, <code>dl.breizhzion.com</code>,
+      <code>apt.breizhzion.com</code> or a package manager) is an ordinary download, and
+      those servers see it like any other request. This policy covers the software once it
+      is on your machine.
+    </p>
+    <p>
+      Questions about this policy:
+      <a href="https://github.com/bzhzion/noisecrypt/issues">open an issue on GitHub</a>, or
+      write to <a href="mailto:contact@breizhzion.com">contact@breizhzion.com</a>.
+      NoiseCrypt is published by BREIZHZION, a French non-profit association.
+    </p>
+  </div>
+</section>
+
+<section id="fr" lang="fr">
+  <div class="centre">
+    <p class="rang">Version française</p>
+    <h2>Politique de confidentialité</h2>
+    <p>
+      NoiseCrypt fonctionne entièrement sur votre ordinateur. Il n'a ni compte, ni serveur,
+      ni télémétrie, ni rapport de plantage, ni vérification de mise à jour, et il n'envoie
+      rien à BREIZHZION ni à personne. Cette version dit la même chose que la version
+      anglaise ci-dessus. Mise à jour le 2026-10-24, valable à partir de NoiseCrypt 0.7.2.
+    </p>
+
+    <h3>Ce qui est traité</h3>
+    <p>
+      Le contenu des fichiers que vous chiffrez ou déchiffrez est lu en mémoire puis écrit
+      à l'endroit demandé, sans être conservé ailleurs ni envoyé. Les phrases de passe sont
+      saisies sans écho, ou lues dans le fichier ou la variable d'environnement que vous
+      indiquez (<code>-passphrase-file</code>, <code>-passphrase-env</code>), ou tapées dans
+      l'interface, et ne restent en mémoire que le temps de l'opération ; NoiseCrypt ne les
+      écrit jamais sur le disque ni dans un journal, et ne les met jamais sur une ligne de
+      commande. Dans l'interface, le navigateur ou le gestionnaire de mots de passe peut
+      proposer de retenir une phrase de passe, comme sur toute page : cette copie, si vous
+      l'acceptez, appartient au navigateur et non à NoiseCrypt. Les
+      identités publiques des autres sont lues là où vous les donnez, sans être copiées. Le
+      nom et la date d'un fichier chiffré sont rangés <strong>à l'intérieur</strong> du
+      conteneur chiffré.
+    </p>
+
+    <h3>Ce qui est écrit sur le disque</h3>
+    <p>
+      <strong>Votre identité</strong> : deux fichiers dans un dossier <code>.noisecrypt</code>
+      de votre dossier personnel (<code>%USERPROFILE%\.noisecrypt</code> sous Windows,
+      <code>~/.noisecrypt</code> sous macOS et Linux). <code>identity.ncrykey</code> est
+      votre identité <strong>privée</strong>, chiffrée par votre phrase de passe (Argon2id)
+      sauf si vous avez choisi de la stocker sans protection ; une identité créée par une
+      ancienne version peut s'appeler <code>identity</code>, sans extension, et n'est jamais
+      renommée. <code>identity.ncrypub</code> est votre identité <strong>publique</strong>,
+      celle que l'on transmet, sans rien de secret. Le dossier n'est volontairement pas dans
+      AppData, qu'un profil Windows joint à un domaine ou à Entra peut synchroniser vers un
+      serveur. <code>NOISECRYPT_HOME</code> et <code>NOISECRYPT_IDENTITY</code> permettent de
+      le déplacer.
+    </p>
+    <p>
+      <strong>Droits d'accès</strong> : <code>0700</code> pour le dossier et
+      <code>0600</code> pour les fichiers sous macOS et Linux. Sous Windows, NoiseCrypt passe
+      <code>icacls</code> sur le dossier et chaque fichier : l'héritage est coupé, et les
+      groupes Administrateurs, SYSTEM et Utilisateurs sont retirés, seul votre compte garde
+      l'accès. Cela empêche un autre compte ordinaire de lire votre clé, pas quelqu'un qui
+      peut déjà agir en administrateur. Conséquence : un logiciel de sauvegarde qui tourne
+      en SYSTEM peut ne pas lire ces fichiers, copiez donc votre identité vous-même en lieu
+      sûr. <code>keygen -out</code> et l'entrée de clic droit <em>Create a NoiseCrypt
+      identity here</em> écrivent les deux mêmes fichiers dans le dossier choisi, et
+      appliquent la même restriction <strong>à ce dossier</strong>, pas seulement aux
+      fichiers.
+    </p>
+    <p>
+      <strong>Les fichiers que vous demandez</strong>, à l'endroit indiqué ou à côté de leur
+      source, jamais par-dessus un fichier existant sans <code>-force</code> : le conteneur
+      <code>.ncry</code> de <code>seal</code>, la vidéo <code>.mp4</code> de
+      <code>encode</code> (produite par FFmpeg), le fichier retrouvé par <code>open</code> et
+      <code>decode</code> dans le dossier courant (pour le clic droit, normalement celui du
+      conteneur), et les vidéos d'essai de <code>simulate -keep</code>
+      (<code>&lt;profil&gt;-master.mp4</code>,
+      <code>&lt;profil&gt;-h&lt;hauteur&gt;-crf&lt;qualité&gt;.mp4</code>) dans le dossier
+      indiqué.
+    </p>
+    <p>
+      <strong>Les fichiers temporaires</strong>, dans le dossier temporaire du système, à
+      nom imprévisible, supprimés dès la fin de l'opération, y compris en cas d'échec :
+      <code>noisecrypt-dl-*</code>, <code>noisecrypt-in-*</code>,
+      <code>noisecrypt-*.mp4</code>, <code>noisecrypt-simulate-*</code> et
+      <code>multipart-*</code>. Si NoiseCrypt est tué en pleine opération, l'un d'eux peut
+      rester ; on peut le supprimer sans risque.
+    </p>
+    <p>
+      <strong>L'intégration à Windows</strong>, si vous gardez l'option de l'installateur
+      (cochée par défaut, y compris en installation silencieuse) ou lancez
+      <code>noisecrypt shell register</code> : des clés sous
+      <code>HKEY_CURRENT_USER\Software\Classes</code>, pour votre seul compte
+      (<code>*\shell\NoiseCryptEncrypt</code>,
+      <code>Directory\Background\shell\NoiseCryptIdentity</code>,
+      <code>NoiseCrypt.Container</code>, <code>.ncry</code>), qui ne contiennent que des
+      libellés, une icône et le chemin du programme. <code>noisecrypt shell unregister</code>
+      les retire. L'option d'ajout au <code>Path</code> y ajoute le dossier du programme, et
+      la désinstallation retire exactement cette entrée.
+    </p>
+    <p>
+      <strong>Le programme</strong> : <code>%LOCALAPPDATA%\Programs\NoiseCrypt</code> sous
+      Windows (ou Program Files pour une installation pour tous), avec un raccourci du menu
+      Démarrer ; <code>/usr/bin/noisecrypt</code> sous Linux ; un fichier unique que vous
+      placez vous-même sous macOS. Il n'y a ni fichier de réglages, ni historique, ni
+      journal.
+    </p>
+
+    <h3>Le réseau</h3>
+    <p>
+      <strong>L'interface</strong> (<code>noisecrypt gui</code>, ou un double-clic sur le
+      programme) écoute sur <code>127.0.0.1</code>, sur un port au hasard, injoignable depuis
+      un autre ordinateur. Elle s'ouvre dans votre navigateur avec un jeton aléatoire, recréé
+      à chaque lancement et valable jusqu'à l'arrêt de l'interface, que le navigateur garde
+      dans un cookie de session, <code>noisecrypt_token</code>. Les fichiers déposés dans la
+      page ne vont que du navigateur à NoiseCrypt, sur votre machine ; ceux qu'il rend sont
+      enregistrés par le navigateur comme tout téléchargement. La page ne charge rien depuis
+      Internet. L'historique du navigateur peut garder l'adresse, dont le jeton ne sert plus
+      à rien une fois l'interface arrêtée.
+    </p>
+    <p>
+      <strong>Le décodage depuis une adresse</strong> (<code>decode -url</code>, ou le champ
+      d'adresse de l'interface) ne fonctionne que si yt-dlp, un programme distinct, est déjà
+      installé : NoiseCrypt ne le télécharge ni ne l'installe jamais. NoiseCrypt résout
+      lui-même le nom de l'hôte (une requête DNS) pour refuser les adresses de réseau privé,
+      puis lance yt-dlp, qui se connecte à cette adresse pour télécharger la vidéo. Ce site
+      voit donc une requête venant de votre adresse IP, comme si vous regardiez la vidéo
+      dans un navigateur. Rien d'autre n'est envoyé, et rien ne va à BREIZHZION. yt-dlp est
+      lancé avec <code>--no-config</code>, mais peut garder son propre cache (par défaut un
+      dossier <code>yt-dlp</code> sous <code>.cache</code> dans votre dossier personnel),
+      que NoiseCrypt ne lit ni ne supprime. FFmpeg, lui aussi distinct et à installer
+      soi-même, ne reçoit que des fichiers locaux.
+    </p>
+
+    <h3>Ce qu'un conteneur ou une vidéo laisse voir</h3>
+    <p>
+      Le contenu, le nom et la date sont chiffrés. En revanche, un conteneur chiffré
+      <strong>pour une identité</strong> porte en clair l'empreinte (SHA-256) de l'identité
+      publique du destinataire : qui détient le conteneur et connaît cette identité sait à
+      qui il est adressé, ce qui n'est pas le cas d'un conteneur chiffré par phrase de passe.
+      La taille donne une idée de celle du contenu. Une vidéo NoiseCrypt se reconnaît comme
+      telle : ce n'est pas de la stéganographie, et il n'y a aucune déniabilité. Une vidéo
+      déposée sur une plateforme y est conservée selon ses conditions, avec ce qu'elle sait
+      de votre compte, sans que NoiseCrypt y soit pour rien.
+    </p>
+
+    <h3>Désinstaller, et supprimer vos données</h3>
+    <p>
+      La désinstallation sous Windows retire le programme, le raccourci, les entrées de clic
+      droit et de double-clic, et l'entrée du <code>Path</code> ; retirer le paquet Linux
+      retire <code>/usr/bin/noisecrypt</code>. Elle ne supprime <strong>jamais</strong> le
+      dossier <code>.noisecrypt</code> : votre identité privée est le seul moyen d'ouvrir ce
+      qui vous a été chiffré, et sa perte est irréversible, donc elle n'est pas effacée par
+      effet de bord d'un geste banal. Vos conteneurs, vidéos et fichiers retrouvés restent
+      aussi. Pour tout retirer, supprimez le dossier <code>.noisecrypt</code> (et toute
+      identité créée dans un dossier de votre choix), les fichiers produits, et si vous le
+      souhaitez le cache de yt-dlp et l'historique du navigateur. Sauvegardez d'abord votre
+      identité si vous pouvez encore avoir à ouvrir quelque chose qui lui a été chiffré.
+    </p>
+
+    <h3>Tiers et contact</h3>
+    <p>
+      Personne ne reçoit de données de NoiseCrypt : ni BREIZHZION, ni aucun service de
+      mesure, de publicité ou de télémétrie. Les seuls tiers que le logiciel joint sont ceux
+      que vous lui désignez, le site d'une adresse que vous lui demandez de décoder, par
+      yt-dlp. Télécharger NoiseCrypt (GitHub, <code>dl.breizhzion.com</code>,
+      <code>apt.breizhzion.com</code> ou un gestionnaire de paquets) est un téléchargement
+      ordinaire, que ces serveurs voient comme toute autre requête. Questions :
+      <a href="https://github.com/bzhzion/noisecrypt/issues">un ticket sur GitHub</a>, ou
+      <a href="mailto:contact@breizhzion.com">contact@breizhzion.com</a>. NoiseCrypt est
+      publié par BREIZHZION, association loi 1901.
+    </p>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="centre">
+    <div class="pied-liens">
+      <a href="/">NoiseCrypt</a>
+      <a href="https://github.com/bzhzion/noisecrypt">Source code</a>
+      <a href="https://github.com/bzhzion/noisecrypt/blob/main/docs/FORMAT.md">Format specification</a>
+      <a href="https://github.com/bzhzion/noisecrypt/issues">Report a problem</a>
+      <a href="https://breizhzion.com">BREIZHZION</a>
+    </div>
+    <p>© 2026 BREIZHZION</p>
+  </div>
+</footer>
+
+</div>
+
+</body>
+</html>

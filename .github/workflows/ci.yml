@@ -74,6 +74,19 @@ jobs:
           NOISECRYPT_REQUIRE_FFMPEG: ${{ matrix.os != 'macos-latest' && '1' || '' }}
         run: go test -race ./...
 
+  # The privacy policy (web/privacy.html) describes what the program writes and contacts. It
+  # is checked against the code here, because BeamMeUp's was wrong twice for having been
+  # written from memory. A failure means "reread the policy", not "the policy is wrong".
+  privacy:
+    name: Privacy policy matches the code
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Disk writes and network use are all described
+        run: python3 scripts/verifier-ecritures-disque.py
+
   cross-compile:
     name: Cross-compile ${{ matrix.goos }}/${{ matrix.goarch }}
     runs-on: ubuntu-latest

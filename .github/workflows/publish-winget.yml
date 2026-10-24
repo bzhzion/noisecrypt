@@ -29,6 +29,17 @@ jobs:
     timeout-minutes: 15
 
     steps:
+      # First, and blocking: the manifest points at web/privacy.html as its PrivacyUrl, and
+      # a winget moderator asked for that page precisely because it must say what the
+      # program writes. A version whose code no longer matches it is not published until
+      # the page has been reread. Same guard as BeamMeUp, which learnt it the hard way.
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Privacy policy matches the code
+        shell: pwsh
+        run: python scripts/verifier-ecritures-disque.py
+
       # This job can only ever *update* a package that already exists upstream, and the
       # first submission has to be made by hand. Until that has been merged there is
       # nothing to update, and `wingetcreate update` fails with a message about the package

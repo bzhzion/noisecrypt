@@ -9,7 +9,7 @@ ARG GIT_SHA=dev
 # c'est exactement le defaut corrige deux fois dans ce depot le meme jour, sur la version
 # de fichier de l'installateur puis sur celle du binaire.
 ARG APP_VERSION=dev
-COPY index.html styles.css favicon.svg robots.txt sitemap.xml /usr/share/nginx/html/
+COPY index.html privacy.html styles.css favicon.svg robots.txt sitemap.xml /usr/share/nginx/html/
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 RUN sed -i "s/{{VERSION}}/${APP_VERSION}/g" /usr/share/nginx/html/index.html
 # Garde-fou : si le gabarit gagne un jour une occurrence que le sed ne remplace pas, la
@@ -37,4 +37,11 @@ RUN sed -i "s/favicon\.svg\"/favicon.svg?v=${GIT_SHA}\"/g" /usr/share/nginx/html
 # personne ne le verrait avant un deploiement qui ne se voit pas.
 RUN grep -q 'styles\.css?v=' /usr/share/nginx/html/index.html
 RUN test "$(grep -c 'favicon\.svg?v=' /usr/share/nginx/html/index.html)" = 2
+# La politique de confidentialite partage la feuille de style et l'icone : meme empreinte,
+# memes garde-fous, sinon elle s'afficherait avec l'ancien style apres un deploiement. Deux
+# references au favicon la aussi, le <link rel="icon"> et le <img> de l'en-tete.
+RUN sed -i "s/styles\.css\"/styles.css?v=${GIT_SHA}\"/" /usr/share/nginx/html/privacy.html
+RUN sed -i "s/favicon\.svg\"/favicon.svg?v=${GIT_SHA}\"/g" /usr/share/nginx/html/privacy.html
+RUN grep -q 'styles\.css?v=' /usr/share/nginx/html/privacy.html
+RUN test "$(grep -c 'favicon\.svg?v=' /usr/share/nginx/html/privacy.html)" = 2
 EXPOSE 80

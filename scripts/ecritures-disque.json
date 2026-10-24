@@ -1,0 +1,49 @@
+{
+  "internal/cli/commands.go": {
+    "os.Chtimes": 1,
+    "os.OpenFile": 1
+  },
+  "internal/cli/shell_windows.go": {
+    "registry.CreateKey": 5,
+    "registry.DeleteKey": 1
+  },
+  "internal/cli/video_commands.go": {
+    "os.Chtimes": 1,
+    "os.MkdirAll": 1,
+    "os.MkdirTemp": 2
+  },
+  "internal/fetch/fetch.go": {
+    "exec.Command": 1,
+    "net.Lookup": 1
+  },
+  "internal/keystore/keystore.go": {
+    "os.MkdirAll": 1,
+    "os.OpenFile": 1,
+    "os.UserHomeDir": 1
+  },
+  "internal/keystore/restrict_other.go": {
+    "os.Chmod": 1
+  },
+  "internal/keystore/restrict_windows.go": {
+    "exec.Command": 1,
+    "icacls": 2
+  },
+  "internal/video/video.go": {
+    "exec.Command": 3
+  },
+  "internal/webui/install_route.go": {
+    "ParseMultipartForm": 1
+  },
+  "internal/webui/routes.go": {
+    "ParseMultipartForm": 1
+  },
+  "internal/webui/server.go": {
+    "SetCookie": 1,
+    "exec.Command": 3,
+    "net.Listen": 2
+  },
+  "internal/webui/video_routes.go": {
+    "os.CreateTemp": 2,
+    "os.MkdirTemp": 1
+  }
+}

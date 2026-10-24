@@ -98,4 +98,12 @@ jobs:
               echo "::error::la page servie n'annonce pas la version ${{ steps.vars.outputs.version }}"
               exit 1
             fi
+            # /privacy est l'adresse donnee au manifeste winget (PrivacyUrl). Un 200 ne
+            # suffit pas, une regle nginx mal posee pourrait servir l'accueil a sa place :
+            # on lit le contenu.
+            code="$(curl -s -o /tmp/nc-privacy.html -w '%{http_code}' http://127.0.0.1:8169/privacy)"
+            if [ "$code" != "200" ] || ! grep -q '<h1>Privacy policy</h1>' /tmp/nc-privacy.html; then
+              echo "::error::/privacy ne sert pas la politique de confidentialite (HTTP $code)"
+              exit 1
+            fi
             echo "Le site sert bien la version ${{ steps.vars.outputs.version }}."
