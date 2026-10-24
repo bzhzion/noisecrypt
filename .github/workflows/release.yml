@@ -503,3 +503,17 @@ jobs:
     with:
       version: ${{ needs.publish.outputs.version }}
     secrets: inherit
+
+  # winget publishing, same wiring as BeamMeUp: only on a pushed tag, because a
+  # `workflow_dispatch` replays a build and must not reopen a pull request for a version
+  # already submitted (run publish-winget.yml directly to republish by hand). And never for
+  # a pre-release version such as 0.8.0-rc.1, which this tag pattern also matches and which
+  # has no place in the public winget catalogue. `needs: publish` guarantees the release and
+  # its installers exist.
+  winget:
+    needs: publish
+    if: github.event_name == 'push' && !contains(needs.publish.outputs.version, '-')
+    uses: ./.github/workflows/publish-winget.yml
+    with:
+      version: ${{ needs.publish.outputs.version }}
+    secrets: inherit

@@ -26,6 +26,15 @@ patched by CI at tag time and are never committed with a real version number.
   par deux mutations avant d'être cru.
 - Le déploiement du site vérifie que `/privacy` sert bien la politique, en lisant le contenu.
 
+### Modifié
+
+- **winget est mis à jour automatiquement à chaque tag**, comme BeamMeUp : le paquet
+  `Breizhzion.NoiseCrypt` a été fusionné dans `microsoft/winget-pkgs` le 2026-10-24 en 0.7.2
+  (PR #431231), donc `publish-winget.yml` devient appelable par un nouveau job `winget` de
+  `release.yml`, seulement sur un push de tag et jamais pour une préversion. Il reste lançable à
+  la main, avec un essai à blanc (`dry_run`) qui génère le manifeste sans ouvrir de PR. Un échec
+  de `wingetcreate` fait désormais échouer l'étape.
+
 ## [0.7.2] - 2026-10-09
 
 ### Corrigé

@@ -1,23 +1,43 @@
 name: Publish to winget
 
-# Deliberately decoupled from the release build: manual trigger only, never automatic.
-# Publishing to winget opens a pull request against `microsoft/winget-pkgs`, a very busy
-# third-party repository reviewed by external maintainers. That is not something that
-# should go out on every tag, least of all during a run of test builds.
+# Called by the `winget` job of release.yml on every pushed version tag, and runnable by
+# hand (with `dry_run` to generate the manifest without opening a pull request). Same
+# wiring as BeamMeUp.
 #
-# No chained opt-in variable here. The mechanism used previously elsewhere in this
+# Automatic since 2026-10-24, the day Breizhzion.NoiseCrypt was merged into
+# microsoft/winget-pkgs (PR #431231). Before that it was manual and disabled, because a
+# first submission cannot be made by `update`. So a tag now opens a pull request on a
+# third-party repository reviewed by moderators, which is why the privacy policy check
+# below runs first and blocks the publication when the page may have become wrong.
+#
+# Still no chained opt-in variable. The mechanism used previously elsewhere in this
 # ecosystem (a repository variable set to true, consumed, then reset to false at the end of
 # the job) rested on a token that answered 401 without failing the step, so the variable
-# stayed stuck at true and everything published automatically: exactly what it existed to
-# prevent. A workflow that only runs when you run it does not have that problem.
+# stayed stuck at true and everything published automatically.
 
 on:
+  workflow_call:
+    inputs:
+      version:
+        description: 'Version to publish'
+        required: true
+        type: string
+      dry_run:
+        description: 'Dry run: generate the manifest, open NO pull request'
+        required: false
+        type: boolean
+        default: false
   workflow_dispatch:
     inputs:
       version:
         description: 'Version to publish (e.g. 0.3.0). A GitHub Release must already exist for it.'
         required: true
         type: string
+      dry_run:
+        description: 'Dry run: generate the manifest, open NO pull request'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -46,11 +66,8 @@ jobs:
       # not being found that reads like a typo in the identifier rather than like a missing
       # prerequisite. So the prerequisite is checked, and named.
       #
-      # This is also the safeguard that travels with the repository. The workflow is
-      # additionally disabled through `gh workflow disable`, which is tidier and cannot be
-      # relied on alone: that state lives on GitHub and not here, so a clone does not carry
-      # it, exactly like `core.hooksPath`. Once the package is upstream, run
-      # `gh workflow enable publish-winget.yml`.
+      # Kept after the package was merged: it costs one request, and a package removed
+      # upstream would otherwise fail later on a message that does not name the cause.
       - name: Preflight
         shell: pwsh
         env:
@@ -102,17 +119,14 @@ jobs:
           "arm=$arm" >> $env:GITHUB_OUTPUT
 
       # This repository being public, a GitHub Release asset is already a stable, publicly
-      # reachable URL that is never overwritten, which is exactly what winget requires. No
-      # intermediate bucket or CDN is needed.
-      #
-      # PREREQUISITE: the package must have been submitted once by hand
-      # (`wingetcreate new`, pull request opened and merged on microsoft/winget-pkgs).
-      # Until that has happened `update` fails, because there is nothing to update.
+      # reachable URL that is never overwritten, which is exactly what winget requires, and
+      # it is the URL of the manifest the moderator accepted. No intermediate bucket or CDN.
       - name: wingetcreate update
         env:
           WINGET_PAT: ${{ secrets.WINGET_PAT }}
           VERSION: ${{ inputs.version }}
           BASE: https://github.com/${{ github.repository }}/releases/download/${{ steps.release.outputs.tag }}
+          DRY_RUN: ${{ inputs.dry_run }}
         shell: pwsh
         run: |
           # The personal fork falls behind microsoft/winget-pkgs, which is a very
@@ -147,9 +161,26 @@ jobs:
           $x64 = "$env:BASE/${{ steps.release.outputs.x64 }}|x64"
           $arm = "$env:BASE/${{ steps.release.outputs.arm }}|arm64"
 
+          if ($env:DRY_RUN -eq 'true') {
+            $essai = Join-Path $env:RUNNER_TEMP "winget-dry-run"
+            .\wingetcreate.exe update Breizhzion.NoiseCrypt `
+              --version $env:VERSION `
+              --urls "$x64" "$arm" `
+              --token $env:WINGET_PAT `
+              --out $essai
+            if ($LASTEXITCODE -ne 0) { Write-Host "::error::wingetcreate update failed (rc=$LASTEXITCODE)"; exit 1 }
+            Get-ChildItem -Path $essai -Recurse -Filter "*.yaml" | ForEach-Object {
+              Write-Host "=== $($_.Name) ==="
+              Get-Content $_.FullName
+            }
+            Write-Host "DRY RUN: manifest generated, no pull request opened."
+            exit 0
+          }
+
           .\wingetcreate.exe update Breizhzion.NoiseCrypt `
             --version $env:VERSION `
             --urls "$x64" "$arm" `
             --token $env:WINGET_PAT `
             --submit `
             --no-open
+          if ($LASTEXITCODE -ne 0) { Write-Host "::error::wingetcreate update failed (rc=$LASTEXITCODE)"; exit 1 }
