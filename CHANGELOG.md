@@ -34,6 +34,10 @@ patched by CI at tag time and are never committed with a real version number.
   `release.yml`, seulement sur un push de tag et jamais pour une préversion. Il reste lançable à
   la main, avec un essai à blanc (`dry_run`) qui génère le manifeste sans ouvrir de PR. Un échec
   de `wingetcreate` fait désormais échouer l'étape.
+- **Manifestes soumis au schéma 1.28.0**, celui qu'a exigé le modérateur, alors que `wingetcreate`
+  (1.12.13) n'écrit que le 1.12.0 : génération sur disque, champ `ManifestVersion` relevé,
+  validation contre les schémas JSON officiels, puis `wingetcreate submit`. L'essai à blanc
+  parcourt tout sauf la soumission.
 
 ## [0.7.2] - 2026-10-09
 

@@ -47,6 +47,11 @@ jobs:
     name: Update the Breizhzion.NoiseCrypt manifest
     runs-on: windows-latest
     timeout-minutes: 15
+    env:
+      # Schema of the submitted manifests, the one the moderator required on 2026-10-24.
+      # winget's validator only refuses a higher MAJOR version than its own, so wingetcreate
+      # 1.12 accepts it. Raise it here when winget-pkgs requires a newer one.
+      MANIFEST_VERSION: 1.28.0
 
     steps:
       # First, and blocking: the manifest points at web/privacy.html as its PrivacyUrl, and
@@ -122,11 +127,11 @@ jobs:
       # reachable URL that is never overwritten, which is exactly what winget requires, and
       # it is the URL of the manifest the moderator accepted. No intermediate bucket or CDN.
       - name: wingetcreate update
+        id: manifest
         env:
           WINGET_PAT: ${{ secrets.WINGET_PAT }}
           VERSION: ${{ inputs.version }}
           BASE: https://github.com/${{ github.repository }}/releases/download/${{ steps.release.outputs.tag }}
-          DRY_RUN: ${{ inputs.dry_run }}
         shell: pwsh
         run: |
           # The personal fork falls behind microsoft/winget-pkgs, which is a very
@@ -161,26 +166,81 @@ jobs:
           $x64 = "$env:BASE/${{ steps.release.outputs.x64 }}|x64"
           $arm = "$env:BASE/${{ steps.release.outputs.arm }}|arm64"
 
-          if ($env:DRY_RUN -eq 'true') {
-            $essai = Join-Path $env:RUNNER_TEMP "winget-dry-run"
-            .\wingetcreate.exe update Breizhzion.NoiseCrypt `
-              --version $env:VERSION `
-              --urls "$x64" "$arm" `
-              --token $env:WINGET_PAT `
-              --out $essai
-            if ($LASTEXITCODE -ne 0) { Write-Host "::error::wingetcreate update failed (rc=$LASTEXITCODE)"; exit 1 }
-            Get-ChildItem -Path $essai -Recurse -Filter "*.yaml" | ForEach-Object {
-              Write-Host "=== $($_.Name) ==="
-              Get-Content $_.FullName
-            }
-            Write-Host "DRY RUN: manifest generated, no pull request opened."
-            exit 0
-          }
-
+          # Written to disk, never `--submit` directly: wingetcreate (1.12.13 on 2026-10-24) only
+          # writes schema 1.12.0, `update` forcing `ManifestVersion` to its own value, while the
+          # moderator required the current schema on the first submission. So the field is
+          # raised below, validated, then submitted by `wingetcreate submit`, which leaves it
+          # alone and rebuilds the headers from it.
+          #
+          # ⚠️ Only the FIELD is raised, not the `# yaml-language-server` header line. The
+          # validation built into wingetcreate (WinGetUtil 1.12) loads its 1.12 schema for a
+          # version it does not know, then compares the file header with that schema's `$id`:
+          # a 1.28.0 header on disk would mismatch. Left at 1.12.0 it matches, and the pull
+          # request still goes out with a 1.28.0 header, rebuilt by `submit` from the field.
+          # Read in the winget-cli and winget-create source, not guessed.
+          $folder = Join-Path $env:RUNNER_TEMP "winget-manifest"
           .\wingetcreate.exe update Breizhzion.NoiseCrypt `
             --version $env:VERSION `
             --urls "$x64" "$arm" `
             --token $env:WINGET_PAT `
-            --submit `
-            --no-open
+            --out $folder
           if ($LASTEXITCODE -ne 0) { Write-Host "::error::wingetcreate update failed (rc=$LASTEXITCODE)"; exit 1 }
+
+          $files = Get-ChildItem -Path $folder -Recurse -Filter "*.yaml"
+          if ($files.Count -ne 3) { Write-Host "::error::3 manifests expected, $($files.Count) generated"; exit 1 }
+          foreach ($f in $files) {
+            $text = Get-Content $f.FullName -Raw
+            $text = $text -replace '(?m)^ManifestVersion: .*$', "ManifestVersion: $env:MANIFEST_VERSION"
+            if ($text -notmatch "(?m)^ManifestVersion: $([regex]::Escape($env:MANIFEST_VERSION))\s*$") {
+              Write-Host "::error::ManifestVersion not raised in $($f.Name)"; exit 1
+            }
+            Set-Content -Path $f.FullName -Value $text -NoNewline
+            Write-Host "=== $($f.Name) ==="
+            Get-Content $f.FullName
+          }
+          "folder=$($files[0].DirectoryName)" >> $env:GITHUB_OUTPUT
+
+      # The official schema is the authority, not our reading: a field wingetcreate might add
+      # one day that the raised version does not accept fails here, before any pull request.
+      - name: Validation tools
+        shell: pwsh
+        run: python -m pip install --quiet --disable-pip-version-check pyyaml jsonschema
+
+      - name: Manifests match the official schema
+        shell: python
+        env:
+          FOLDER: ${{ steps.manifest.outputs.folder }}
+        run: |
+          import json, os, pathlib, urllib.request
+          import jsonschema, yaml
+          version = os.environ["MANIFEST_VERSION"]
+          base = ("https://raw.githubusercontent.com/microsoft/winget-cli/master/schemas/JSON/"
+                  f"manifests/v{version}/manifest.{{}}.{version}.json")
+          for f in sorted(pathlib.Path(os.environ["FOLDER"]).glob("*.yaml")):
+              doc = yaml.safe_load(f.read_text(encoding="utf-8"))
+              # YAML reads a bare date as a date object, the schema expects a string.
+              doc = {k: (str(v) if k == "ReleaseDate" else v) for k, v in doc.items()}
+              schema = json.load(urllib.request.urlopen(base.format(doc["ManifestType"])))
+              jsonschema.validate(doc, schema)
+              print(f"{f.name}: matches schema {version}")
+
+      - name: Submit
+        if: inputs.dry_run != true
+        env:
+          WINGET_PAT: ${{ secrets.WINGET_PAT }}
+          VERSION: ${{ inputs.version }}
+          FOLDER: ${{ steps.manifest.outputs.folder }}
+        shell: pwsh
+        run: |
+          .\wingetcreate.exe submit `
+            --prtitle "New version: Breizhzion.NoiseCrypt version $env:VERSION" `
+            --token $env:WINGET_PAT `
+            --no-open `
+            $env:FOLDER
+          if ($LASTEXITCODE -ne 0) { Write-Host "::error::wingetcreate submit failed (rc=$LASTEXITCODE)"; exit 1 }
+
+      - name: Dry run
+        if: inputs.dry_run == true
+        shell: pwsh
+        run: |
+          Write-Host "DRY RUN: manifests generated and validated, no pull request opened."
