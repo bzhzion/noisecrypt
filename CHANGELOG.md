@@ -28,6 +28,7 @@ patched by CI at tag time and are never committed with a real version number.
 
 ### Modifié
 
+- **Adresse de l'association : 34 rue Decomberousse, 69100 Villeurbanne** (le siège quitte le 4 rue Isabelle Sadoyan), dans `LICENSE.md`.
 - **winget est mis à jour automatiquement à chaque tag**, comme BeamMeUp : le paquet
   `Breizhzion.NoiseCrypt` a été fusionné dans `microsoft/winget-pkgs` le 2026-10-24 en 0.7.2
   (PR #431231), donc `publish-winget.yml` devient appelable par un nouveau job `winget` de
